@@ -1,3 +1,4 @@
+
 # below is constants_for_all_files.py
 
 # necessary imports
@@ -28,7 +29,3 @@ K_COULOMB = 8.99e9 # Coulomb's Constant in N m²/C²
 E_CHARGE = 1.602e-19 # Elementary Charge in Coulombs
 E_MASS = 9.109e-31 # Electron Mass in kg
 P_MASS = 1.672e-27 # Proton Mass in kg
-
-# simulation states
-
-sim_state = 0 # 0 = Setup, 1 = Running, 0.5 = Paused

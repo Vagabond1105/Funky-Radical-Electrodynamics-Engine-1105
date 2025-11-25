@@ -1,4 +1,3 @@
-# below is gui.py
 
 import pygame
 import numpy as np
@@ -40,7 +39,7 @@ class ResetButton:
         color = (200, 50, 50) if self.hovered else (150, 50, 50)
         pygame.draw.rect(screen, color, self.rect)
         pygame.draw.rect(screen, (0,0,0), self.rect, 2)
-        
+
         text = self.font.render("RESET", True, (255, 255, 255))
         text_rect = text.get_rect(center=self.rect.center)
         screen.blit(text, text_rect)
@@ -51,7 +50,7 @@ class StartButton:
         self.rect = pygame.Rect(1380, SH - 60, 100, 40)
         self.font = pygame.font.SysFont('Roboto', 24, bold=True)
         self.hovered = False
-        
+
     def handle_event(self, event):
         if event.type == pygame.MOUSEMOTION:
             self.hovered = self.rect.collidepoint(event.pos)
@@ -65,34 +64,8 @@ class StartButton:
         color = (50, 150, 50) if self.hovered else (50, 100, 50)
         pygame.draw.rect(screen, color, self.rect)
         pygame.draw.rect(screen, (0,0,0), self.rect, 2)
-        
+
         text = self.font.render("START", True, (255, 255, 255))
-        text_rect = text.get_rect(center=self.rect.center)
-        screen.blit(text, text_rect)
-
-class PauseButton: # This will inherit start button and have just different text to Pause
-
-    def __init__(self):
-        # Placed instead of StartButton
-        self.rect = pygame.Rect(1380, SH - 60, 100, 40)
-        self.font = pygame.font.SysFont('Roboto', 24, bold=True)
-        self.hovered = False
-        
-    def handle_event(self, event):
-        if event.type == pygame.MOUSEMOTION:
-            self.hovered = self.rect.collidepoint(event.pos)
-        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.hovered:
-                return True
-        return False
-
-    def render(self, screen):
-        # Yellow Color for Pause
-        color = (200, 200, 50) if self.hovered else (150, 150, 50)
-        pygame.draw.rect(screen, color, self.rect)
-        pygame.draw.rect(screen, (0,0,0), self.rect, 2)
-        
-        text = self.font.render("PAUSE", True, (255, 255, 255))
         text_rect = text.get_rect(center=self.rect.center)
         screen.blit(text, text_rect)
 
@@ -106,7 +79,7 @@ class WallCORSlider:
         self.dragging = False
         self.font = pygame.font.SysFont('Arial', 14)
         self.label = "Wall Bounce:"
-        
+
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             knob_x = self.slider_rect.x + self.value * self.slider_rect.width
@@ -114,35 +87,35 @@ class WallCORSlider:
                                    self.knob_radius * 2, self.knob_radius * 2)
             if knob_rect.collidepoint(event.pos):
                 self.dragging = True
-                
+
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             self.dragging = False
-            
+
         elif event.type == pygame.MOUSEMOTION and self.dragging:
             # Update value based on mouse position
             relative_x = event.pos[0] - self.slider_rect.x
             self.value = max(0.0, min(1.0, relative_x / self.slider_rect.width))
-            
+
     def render(self, screen):
         # Draw label
         label_surf = self.font.render(self.label, True, (0, 0, 0))
         screen.blit(label_surf, (self.rect.x, self.rect.y - 20))
-        
+
         # Draw track
         pygame.draw.rect(screen, (200, 200, 200), self.slider_rect)
         pygame.draw.rect(screen, (0, 0, 0), self.slider_rect, 1)
-        
+
         # Draw filled portion (progress bar)
         filled_width = self.slider_rect.width * self.value
         filled_rect = pygame.Rect(self.slider_rect.x, self.slider_rect.y, filled_width, self.slider_rect.height)
         pygame.draw.rect(screen, (100, 150, 255), filled_rect)
-        
+
         # Draw knob
         knob_x = self.slider_rect.x + self.value * self.slider_rect.width
         knob_color = (50, 100, 200) if self.dragging else (100, 150, 255)
         pygame.draw.circle(screen, knob_color, (int(knob_x), int(self.slider_rect.centery)), self.knob_radius)
         pygame.draw.circle(screen, (0, 0, 0), (int(knob_x), int(self.slider_rect.centery)), self.knob_radius, 2)
-        
+
         # Draw value text
         value_text = self.font.render(f"{self.value:.2f}", True, (0, 0, 0))
         screen.blit(value_text, (self.slider_rect.right + 10, self.slider_rect.centery - 7))
@@ -161,7 +134,7 @@ class ContextMenu:
 
     def handle_event(self, event):
         if not self.active: return None
-        
+
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.rect.collidepoint(event.pos):
                 return "open_creator" # Clicked "Point Charge"
@@ -185,14 +158,14 @@ class ScientificTextBox:
         self.text = default_text
         self.active = False
         self.font = pygame.font.SysFont(FONT_NAME, FONT_SIZE)
-        
+
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN:
             if self.rect.collidepoint(event.pos):
                 self.active = True
             else:
                 self.active = False
-                
+
         if event.type == pygame.KEYDOWN and self.active:
             if event.key == pygame.K_RETURN:
                 self.active = False
@@ -215,7 +188,7 @@ class ScientificTextBox:
         color = COL_ACTIVE if self.active else COL_INACTIVE
         pygame.draw.rect(screen, (255, 255, 255), self.rect)
         pygame.draw.rect(screen, color, self.rect, 2)
-        
+
         # Text rendering
         text_surf = self.font.render(self.text, True, COL_TEXT)
         # Center text vertically
@@ -229,14 +202,14 @@ class MantissaTextBox:
         self.text = default_text
         self.active = False
         self.font = pygame.font.SysFont(FONT_NAME, FONT_SIZE)
-        
+
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN:
             if self.rect.collidepoint(event.pos):
                 self.active = True
             else:
                 self.active = False
-                
+
         if event.type == pygame.KEYDOWN and self.active:
             if event.key == pygame.K_RETURN:
                 self.active = False
@@ -267,7 +240,7 @@ class MantissaTextBox:
         color = COL_ACTIVE if self.active else COL_INACTIVE
         pygame.draw.rect(screen, (255, 255, 255), self.rect)
         pygame.draw.rect(screen, color, self.rect, 2)
-        
+
         text_surf = self.font.render(self.text, True, COL_TEXT)
         text_rect = text_surf.get_rect(midleft=(self.rect.x + 5, self.rect.centery))
         screen.blit(text_surf, text_rect)
@@ -279,14 +252,14 @@ class ExponentTextBox:
         self.text = default_text
         self.active = False
         self.font = pygame.font.SysFont(FONT_NAME, FONT_SIZE)
-        
+
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN:
             if self.rect.collidepoint(event.pos):
                 self.active = True
             else:
                 self.active = False
-                
+
         if event.type == pygame.KEYDOWN and self.active:
             if event.key == pygame.K_RETURN:
                 self.active = False
@@ -318,7 +291,7 @@ class ExponentTextBox:
         color = COL_ACTIVE if self.active else COL_INACTIVE
         pygame.draw.rect(screen, (255, 255, 255), self.rect)
         pygame.draw.rect(screen, color, self.rect, 2)
-        
+
         text_surf = self.font.render(self.text, True, COL_TEXT)
         text_rect = text_surf.get_rect(midleft=(self.rect.x + 5, self.rect.centery))
         screen.blit(text_surf, text_rect)
@@ -328,12 +301,12 @@ class BinaryToggle:
     def __init__(self, x, y, w, h, label, initial_state=True, 
                  text_true="ON", text_false="OFF", 
                  col_true=COL_TRUE_STD, col_false=COL_FALSE_STD):
-        
+
         self.rect = pygame.Rect(x, y, w, h)
         self.label = label
         self.state = initial_state
         self.font = pygame.font.SysFont('Arial', 14, bold=True)
-        
+
         # Custom Configuration
         self.text_true = text_true
         self.text_false = text_false
@@ -355,15 +328,15 @@ class BinaryToggle:
         else:
             bg_col = self.col_false
             status_txt = self.text_false
-            
+
         pygame.draw.rect(screen, bg_col, self.rect)
         pygame.draw.rect(screen, (0,0,0), self.rect, 2)
-        
+
         # Status Text inside button
         txt_surf = self.font.render(status_txt, True, (255,255,255))
         txt_rect = txt_surf.get_rect(center=self.rect.center)
         screen.blit(txt_surf, txt_rect)
-        
+
         # Label Text above button
         if self.label:
             label_surf = self.font.render(self.label, True, (0,0,0))
@@ -377,28 +350,28 @@ class CreationForm:
         self.font = pygame.font.SysFont('Arial', 16, bold=True)
         self.edit_mode = False  # False = Create, True = Edit
         self.editing_particle = None  # Reference to particle being edited
-        
+
         # --- COMPONENTS ---
-        
+
         # 1. Remember Toggle (Standard Green/Red)
         self.btn_remember = BinaryToggle(0, 0, 120, 25, "Remember Input", False)
-        
+
         # 2. Charge Input & Sign Toggle (CUSTOM RED/BLUE)
         self.btn_charge_sign = BinaryToggle(0, 0, 50, 30, "", True, 
                                             text_true="+", text_false="-",
                                             col_true=COL_POS, col_false=COL_NEG)
-        
+
         self.input_charge_mantissa = MantissaTextBox(0, 0, 80, 30, "1.0")
         self.input_charge_exponent = ExponentTextBox(0, 0, 60, 30, "0")
-        
+
         # 3. Mass Input
         self.input_mass_mantissa = MantissaTextBox(0, 0, 80, 30, "1.0")
         self.input_mass_exponent = ExponentTextBox(0, 0, 60, 30, "0")
-        
+
         # 4. Environmental & Static Toggles (Standard Green/Red)
         self.btn_env = BinaryToggle(0, 0, 60, 30, "Env", True)
         self.btn_static = BinaryToggle(0, 0, 60, 30, "Static", True)
-        
+
         # 5. Action Buttons
         self.btn_submit = pygame.Rect(0,0, 100, 30)
         self.btn_cancel = pygame.Rect(0,0, 100, 30)
@@ -410,7 +383,7 @@ class CreationForm:
         self.edit_mode = particle is not None
         self.editing_particle = particle
         self.rect.center = (SW//2, SH//2)
-        
+
         if self.edit_mode and particle:
             # Load particle's current values into form
             # Decompose charge into mantissa and exponent
@@ -421,7 +394,7 @@ class CreationForm:
                 import math
                 c_exponent = int(math.floor(math.log10(charge_val)))
                 c_mantissa = charge_val / (10 ** c_exponent)
-            
+
             # Decompose mass into mantissa and exponent
             mass_val = particle.mass
             if mass_val == 0:
@@ -430,7 +403,7 @@ class CreationForm:
                 import math
                 m_exponent = int(math.floor(math.log10(mass_val)))
                 m_mantissa = mass_val / (10 ** m_exponent)
-            
+
             self.input_charge_mantissa.text = f"{c_mantissa:.1f}"
             self.input_charge_exponent.text = str(c_exponent)
             self.input_mass_mantissa.text = f"{m_mantissa:.1f}"
@@ -447,26 +420,26 @@ class CreationForm:
             self.btn_charge_sign.state = True
             self.btn_env.state = True
             self.btn_static.state = True
-            
+
         # --- LAYOUT CALCULATION ---
         rx, ry = self.rect.x, self.rect.y
-        
+
         # Remember Input (Top Right)
         self.btn_remember.rect.topright = (self.rect.right - 20, ry + 30)
-        
+
         # Charge Row (Moved down to Y=90 for label clearance)
         self.btn_charge_sign.rect.topleft = (rx + 40, ry + 90)
         self.input_charge_mantissa.rect.topleft = (rx + 100, ry + 90)
         self.input_charge_exponent.rect.topleft = (rx + 230, ry + 90)
-        
+
         # Mass Row (Moved down to Y=160)
         self.input_mass_mantissa.rect.topleft = (rx + 100, ry + 160)
         self.input_mass_exponent.rect.topleft = (rx + 230, ry + 160)
-        
+
         # Toggles Row
         self.btn_env.rect.topleft = (rx + 50, ry + 230)
         self.btn_static.rect.topleft = (rx + 200, ry + 230)
-        
+
         # Buttons
         self.btn_submit.bottomleft = (rx + 30, self.rect.bottom - 20)
         self.btn_cancel.bottomright = (self.rect.right - 30, self.rect.bottom - 20)
@@ -487,30 +460,30 @@ class CreationForm:
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             # Check Submit
             if self.btn_submit.collidepoint(event.pos):
-                
+
                 # Validate Inputs
                 c_mantissa = self.input_charge_mantissa.get_value()
                 c_exponent = self.input_charge_exponent.get_value()
                 m_mantissa = self.input_mass_mantissa.get_value()
                 m_exponent = self.input_mass_exponent.get_value()
-                
+
                 print(f"DEBUG: c_mantissa={c_mantissa}, c_exponent={c_exponent}, m_mantissa={m_mantissa}, m_exponent={m_exponent}")
-                
+
                 # Validation: All must be numbers, mantissas in range [1.0-9.9], mass > 0
                 if (c_mantissa is not None and c_exponent is not None and 
                     m_mantissa is not None and m_exponent is not None and
                     1.0 <= c_mantissa <= 9.9 and 1.0 <= m_mantissa <= 9.9):
-                    
+
                     # Construct charge value: mantissa * 10^exponent
                     charge = c_mantissa * (10 ** c_exponent)
                     if not self.btn_charge_sign.state: # If state is False (Blue/-)
                         charge = -charge
-                    
+
                     # Construct mass value: mantissa * 10^exponent
                     mass = m_mantissa * (10 ** m_exponent)
-                    
+
                     print(f"DEBUG: Validation passed. charge={charge}, mass={mass}")
-                    
+
                     if mass > 0:
                         self.active = False
                         result = {
@@ -519,7 +492,7 @@ class CreationForm:
                             "environmental": self.btn_env.state,
                             "static": self.btn_static.state
                         }
-                        
+
                         if self.edit_mode:
                             # Edit mode: return particle reference and edited flag
                             result["particle"] = self.editing_particle
@@ -527,42 +500,42 @@ class CreationForm:
                         else:
                             # Create mode: return position for new particle
                             result["position"] = np.array(self.target_pos, dtype=float)
-                        
+
                         return result
-            
+
             # Check Cancel
             elif self.btn_cancel.collidepoint(event.pos):
                 self.active = False
                 return None
-                
+
         return None
 
     def render(self, screen):
         if not self.active: return
-        
+
         # Draw Panel
         pygame.draw.rect(screen, COL_BG, self.rect)
         pygame.draw.rect(screen, COL_BORDER, self.rect, 2)
-        
+
         # Title (different based on mode)
         title_text = "Edit Charge" if self.edit_mode else "Create Charge"
         title = self.font.render(title_text, True, COL_TEXT)
         screen.blit(title, (self.rect.x + 20, self.rect.y + 20))
-        
+
         # Labels for TextBoxes
         l_chg = self.font.render("Charge:", True, COL_TEXT)
         screen.blit(l_chg, (self.rect.x + 100, self.input_charge_mantissa.rect.top - 20))
-        
+
         l_mass = self.font.render("Mass:", True, COL_TEXT)
         screen.blit(l_mass, (self.rect.x + 100, self.input_mass_mantissa.rect.top - 20))
-        
+
         # x 10^ labels
         exp_label_c = self.font.render("x 10 ^", True, COL_TEXT)
         screen.blit(exp_label_c, (self.input_charge_mantissa.rect.right + 10, self.input_charge_mantissa.rect.centery - 8))
-        
+
         exp_label_m = self.font.render("x 10 ^", True, COL_TEXT)
         screen.blit(exp_label_m, (self.input_mass_mantissa.rect.right + 10, self.input_mass_mantissa.rect.centery - 8))
-        
+
         # Render Components
         self.btn_remember.render(screen)
         self.btn_charge_sign.render(screen)
@@ -572,7 +545,7 @@ class CreationForm:
         self.input_mass_exponent.render(screen)
         self.btn_env.render(screen)
         self.btn_static.render(screen)
-        
+
         # Render Action Buttons
         # Submit (Green-ish)
         pygame.draw.rect(screen, (100, 200, 100), self.btn_submit)
@@ -581,7 +554,7 @@ class CreationForm:
         ts = self.font.render(submit_text, True, (0,0,0))
         ts_rect = ts.get_rect(center=self.btn_submit.center)
         screen.blit(ts, ts_rect)
-        
+
         # Cancel (Red-ish)
         pygame.draw.rect(screen, (200, 100, 100), self.btn_cancel)
         pygame.draw.rect(screen, (0,0,0), self.btn_cancel, 1)
