@@ -24,6 +24,10 @@ WALL_RECT = pygame.Rect(0, 0, SW, SH)
 
 WBT = 20 # Wall Border Thickness
 BW_coeff = 0.9 # Coefficient of Restitution for Bouncing Wall
+# Inner wall rectangle (the visible wall border area is drawn using WALL_RECT and WBT).
+# Use this inset rect as the actual collision boundary so particles bounce off the black wall
+# rather than the outer window edges.
+WALL_INNER_RECT = pygame.Rect(WBT, WBT, SW - 2 * WBT, SH - 2 * WBT)
 K_COULOMB = 8.99e9 # Coulomb's Constant in N m²/C²
 E_CHARGE = 1.602e-19 # Elementary Charge in Coulombs
 E_MASS = 9.109e-31 # Electron Mass in kg
@@ -32,3 +36,8 @@ P_MASS = 1.672e-27 # Proton Mass in kg
 # simulation states
 
 sim_state = 0 # 0 = Setup, 1 = Running, 0.5 = Paused
+
+# after effects and trails
+
+TRAIL_LENGTH = 40   # How many "ghosts" to keep
+TRAIL_SKIP = 2      # Record position every N frames (Optimization)

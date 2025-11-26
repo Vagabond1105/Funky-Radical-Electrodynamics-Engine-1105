@@ -70,7 +70,7 @@ class StartButton:
         text_rect = text.get_rect(center=self.rect.center)
         screen.blit(text, text_rect)
 
-class PauseButton: # This will inherit start button and have just different text to Pause
+class PauseButton: 
 
     def __init__(self):
         # Placed instead of StartButton
@@ -93,6 +93,18 @@ class PauseButton: # This will inherit start button and have just different text
         pygame.draw.rect(screen, (0,0,0), self.rect, 2)
         
         text = self.font.render("PAUSE", True, (255, 255, 255))
+        text_rect = text.get_rect(center=self.rect.center)
+        screen.blit(text, text_rect)
+
+class UnpauseButton(PauseButton):
+
+    def render(self, screen):
+        # Green Color for Unpause
+        color = (50, 150, 50) if self.hovered else (50, 100, 50)
+        pygame.draw.rect(screen, color, self.rect)
+        pygame.draw.rect(screen, (0,0,0), self.rect, 2)
+        self.rect = pygame.Rect(1380, SH - 60, 100, 40)
+        text = self.font.render("UNPAUSE", True, (255, 255, 255))
         text_rect = text.get_rect(center=self.rect.center)
         screen.blit(text, text_rect)
 
@@ -369,17 +381,49 @@ class BinaryToggle:
             label_surf = self.font.render(self.label, True, (0,0,0))
             screen.blit(label_surf, (self.rect.x, self.rect.y - 18))
 
+class TrailsToggle:
+    """A simple toggle button labeled 'TRAILS' with white text and red/green background."""
+    def __init__(self, x=140, y=SH-60, w=100, h=40, initial_state=False):
+        self.rect = pygame.Rect(x, y, w, h)
+        self.state = initial_state
+        self.font = pygame.font.SysFont('Arial', 18, bold=True)
+        self.hovered = False
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEMOTION:
+            self.hovered = self.rect.collidepoint(event.pos)
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.rect.collidepoint(event.pos):
+                self.state = not self.state
+                return True
+        return False
+
+    def render(self, screen):
+        # Background: green when ON, red when OFF
+        bg = (50, 200, 50) if self.state else (200, 50, 50)
+        # Slight brighten on hover
+        if self.hovered:
+            bg = tuple(min(255, int(c * 1.05)) for c in bg)
+        pygame.draw.rect(screen, bg, self.rect)
+        pygame.draw.rect(screen, (0,0,0), self.rect, 2)
+
+        # White label centered
+        txt = self.font.render("TRAILS", True, (255, 255, 255))
+        txt_rect = txt.get_rect(center=self.rect.center)
+        screen.blit(txt, txt_rect)
+
 class CreationForm:
     def __init__(self):
         self.active = False
-        self.rect = pygame.Rect(0, 0, 380, 360)
+        self.rect = pygame.Rect(0, 0, 380, 400)
         self.target_pos = (0,0)
         self.font = pygame.font.SysFont('Arial', 16, bold=True)
         self.edit_mode = False  # False = Create, True = Edit
         self.editing_particle = None  # Reference to particle being edited
         
-        # --- COMPONENTS ---
-        
+        # memory storage
+        self.creation_memory = {}
+
         # 1. Remember Toggle (Standard Green/Red)
         self.btn_remember = BinaryToggle(0, 0, 120, 25, "Remember Input", False)
         
@@ -402,6 +446,13 @@ class CreationForm:
         # 5. Action Buttons
         self.btn_submit = pygame.Rect(0,0, 100, 30)
         self.btn_cancel = pygame.Rect(0,0, 100, 30)
+        # Delete button (visible only in edit mode)
+        self.btn_delete = pygame.Rect(0,0, 100, 30)
+        # 6. Coefficient of Restitution Slider (per-particle)
+        # Initialize with placeholder position; `show()` will position it.
+        self.slider_restitution = WallCORSlider(0, 0, 160, 20, initial_value=1.0)
+        self.slider_restitution.label = "Restitution:" 
+        # Remembered input storage (persist last submitted inputs when remember toggle is ON)
 
     def show(self, pos, particle=None):
         """Show form. If particle is provided, enter edit mode."""
@@ -438,11 +489,29 @@ class CreationForm:
             self.btn_charge_sign.state = particle.charge >= 0
             self.btn_env.state = particle.environmental
             self.btn_static.state = particle.static
+            # load particle's restitution if present
+            try:
+                self.slider_restitution.value = float(particle.e)
+            except Exception:
+                self.slider_restitution.value = 1.0
+
+            # remember button
+        elif self.btn_remember.state and self.creation_memory:
+            # CREATE MODE + MEMORY: Load from isolated memory
+            self.input_charge_mantissa.text = self.creation_memory.get('c_man', "1.0")
+            self.input_charge_exponent.text = self.creation_memory.get('c_exp', "0")
+            self.input_mass_mantissa.text = self.creation_memory.get('m_man', "1.0")
+            self.input_mass_exponent.text = self.creation_memory.get('m_exp', "0")
+            self.btn_charge_sign.state = self.creation_memory.get('sign', True)
+            self.btn_env.state = self.creation_memory.get('env', True)
+            self.btn_static.state = self.creation_memory.get('static', True)
+            self.slider_restitution.value = self.creation_memory.get('restitution', 1.0)
+
         else:
-            # Create mode: reset to defaults
-            self.input_charge_mantissa.text = "1.0"
+            # Defaults
+            self.input_charge_mantissa.text = "1"
             self.input_charge_exponent.text = "0"
-            self.input_mass_mantissa.text = "1.0"
+            self.input_mass_mantissa.text = "1"
             self.input_mass_exponent.text = "0"
             self.btn_charge_sign.state = True
             self.btn_env.state = True
@@ -462,6 +531,9 @@ class CreationForm:
         # Mass Row (Moved down to Y=160)
         self.input_mass_mantissa.rect.topleft = (rx + 100, ry + 160)
         self.input_mass_exponent.rect.topleft = (rx + 230, ry + 160)
+        # Restitution Slider (between mass and toggles)
+        self.slider_restitution = WallCORSlider(rx + 100, ry + 300, 160, 20, initial_value=self.slider_restitution.value)
+        self.slider_restitution.label = "Restitution:"
         
         # Toggles Row
         self.btn_env.rect.topleft = (rx + 50, ry + 230)
@@ -469,6 +541,9 @@ class CreationForm:
         
         # Buttons
         self.btn_submit.bottomleft = (rx + 30, self.rect.bottom - 20)
+        # Place delete button centered between submit and cancel
+        self.btn_delete.centerx = self.rect.centerx
+        self.btn_delete.bottom = self.rect.bottom - 20
         self.btn_cancel.bottomright = (self.rect.right - 30, self.rect.bottom - 20)
 
     def handle_event(self, event):
@@ -483,6 +558,11 @@ class CreationForm:
         self.btn_charge_sign.handle_event(event)
         self.btn_env.handle_event(event)
         self.btn_static.handle_event(event)
+        # Restitution slider
+        try:
+            self.slider_restitution.handle_event(event)
+        except Exception:
+            pass
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             # Check Submit
@@ -512,10 +592,27 @@ class CreationForm:
                     print(f"DEBUG: Validation passed. charge={charge}, mass={mass}")
                     
                     if mass > 0:
+                        # If remember toggle is ON, store the current inputs for next create
+                        # IF CREATING, SAVE TO MEMORY
+                        if self.btn_remember.state and not self.edit_mode:
+                                try:
+                                    self.creation_memory = {
+                                        'c_man': self.input_charge_mantissa.text,
+                                        'c_exp': self.input_charge_exponent.text,
+                                        'm_man': self.input_mass_mantissa.text,
+                                        'm_exp': self.input_mass_exponent.text,
+                                        'sign': self.btn_charge_sign.state,
+                                        'env': self.btn_env.state,
+                                        'static': self.btn_static.state,
+                                        'restitution': getattr(self.slider_restitution, 'value', 1.0)
+                                }
+                                except Exception:
+                                    pass
                         self.active = False
                         result = {
                             "charge": charge,
                             "mass": mass,
+                            "e": getattr(self.slider_restitution, 'value', 1.0),
                             "environmental": self.btn_env.state,
                             "static": self.btn_static.state
                         }
@@ -530,6 +627,12 @@ class CreationForm:
                         
                         return result
             
+            # Check Delete (only in edit mode)
+            if self.edit_mode and self.btn_delete.collidepoint(event.pos):
+                # Return a delete action with particle reference
+                self.active = False
+                return {"delete": True, "particle": self.editing_particle}
+
             # Check Cancel
             elif self.btn_cancel.collidepoint(event.pos):
                 self.active = False
@@ -570,6 +673,11 @@ class CreationForm:
         self.input_charge_exponent.render(screen)
         self.input_mass_mantissa.render(screen)
         self.input_mass_exponent.render(screen)
+        # Restitution slider render
+        try:
+            self.slider_restitution.render(screen)
+        except Exception:
+            pass
         self.btn_env.render(screen)
         self.btn_static.render(screen)
         
@@ -582,6 +690,14 @@ class CreationForm:
         ts_rect = ts.get_rect(center=self.btn_submit.center)
         screen.blit(ts, ts_rect)
         
+        # Delete (Black with white text) - only in edit mode
+        if self.edit_mode:
+            pygame.draw.rect(screen, (0, 0, 0), self.btn_delete)
+            pygame.draw.rect(screen, (0,0,0), self.btn_delete, 1)
+            td = self.font.render("DELETE", True, (255,255,255))
+            td_rect = td.get_rect(center=self.btn_delete.center)
+            screen.blit(td, td_rect)
+
         # Cancel (Red-ish)
         pygame.draw.rect(screen, (200, 100, 100), self.btn_cancel)
         pygame.draw.rect(screen, (0,0,0), self.btn_cancel, 1)

@@ -1,4 +1,4 @@
-# electric_field.py file
+# below is electric_field.py file
 
 # necessary imports
 
@@ -33,8 +33,8 @@ class ElectricFieldSystem:
         net_field = np.zeros_like(self.grid_x, dtype=float)
 
         for pc in charges:
-            dx = self.grid_x - pc.pos[0]
-            dy = self.grid_y - pc.pos[1]
+            dx = self.grid_x - pc.position[0]
+            dy = self.grid_y - pc.position[1]
             r2 = dx**2 + dy**2
             r2[r2 == 0] = E_CHARGE # Prevent division by zero
             min_distance = pc.total_radius ** 2

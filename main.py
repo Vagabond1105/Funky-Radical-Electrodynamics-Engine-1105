@@ -4,25 +4,30 @@ import numpy as np
 
 # IMPORTS
 from constants_for_all_files import *
-from point_charges import PointCharge
-from electric_field import ElectricFieldSystem
-from gui import ResetButton, StartButton, ContextMenu, CreationForm, WallCORSlider
+from point_charges import *
+from electric_field import *
+from physics_engine import *
+from gui import *
 
 # --- 1. INITIALIZATION & SETUP ---
 pygame.init()
 screen = pygame.display.set_mode((SW, SH))
-pygame.display.set_caption("FREE1105: Phase 1 - Setup & Initialization")
+pygame.display.set_caption("FREE1105: Phase 2")
 clock = pygame.time.Clock()
 
 # --- 2. SYSTEMS ---
 ef_system = ElectricFieldSystem()
 reset_btn = ResetButton()
 pause_btn = PauseButton()
+unpause_btn = UnpauseButton()
 start_btn = StartButton()
 context_menu = ContextMenu()
 create_form = CreationForm()
+trails_toggle = TrailsToggle()
+
 # Slider positioned near the wall constants
 wall_cor_slider = WallCORSlider(30, 20, 150, 30, initial_value=BW_coeff)
+physics_engine = PhysicsEngine()
 
 # --- 3. STATE MANAGEMENT ---
 # 0 = SETUP (Edit Mode), 1 = RUNNING (Physics Mode)
@@ -32,14 +37,24 @@ all_point_charges = []
 selected_charge = None
 p_id_counter = 0
 wall_cor = wall_cor_slider.value 
+# Double-click tracking for particle duplication
+LAST_CLICK_MS = 400  # max ms between clicks to consider a double-click
+last_click_time = 0
+last_click_pc_id = None
 
-# --- 4. THE SIMULATION LOOP ---
+# Pause text bouncing (DVD logo style)
+
+import math
+pause_text_pos = [SW // 2, SH // 2]
+pause_text_vel = [900 * math.cos(math.radians(40)), 900 * math.sin(math.radians(40))]  # 40 degrees
+pause_font = pygame.font.SysFont("Roboto", 74)
+
+# core simulation loop
 
 running = True
 while running:
     
     # --- A. TIME & MOUSE ---
-    dt = clock.tick(60) / 1000.0 # Delta Time
     mouse_pos = pygame.mouse.get_pos()
     
     # --- B. GLOBAL EVENT HANDLING (THE ONE TRUE LOOP) ---
@@ -51,9 +66,7 @@ while running:
         # 2. GLOBAL: Reset Button (Works in ANY state to save you)
         if reset_btn.handle_event(event):
             sim_state = 0 # Force back to SETUP
-            # Keep only environmental charges
-            all_point_charges = [pc for pc in all_point_charges if pc.environmental]
-            # Reset their positions
+            # Reset all charges to initial positions and velocities
             for pc in all_point_charges:
                 pc.reset()
             print("SIMULATION RESET")
@@ -66,10 +79,11 @@ while running:
             # 1. Start Button (Only works in Setup) and requires no particles touching walls or other particles and they are existing
             particles_touching = False
             for pc in all_point_charges:
-                if (pc.position[0] - pc.total_radius <= 0 or
-                    pc.position[0] + pc.total_radius >= SW or
-                    pc.position[1] - pc.total_radius <= 0 or
-                    pc.position[1] + pc.total_radius >= SH):
+                # Check against the visible black wall (WALL_INNER_RECT), not the window edges
+                if (pc.position[0] - pc.total_radius <= WALL_INNER_RECT.left or
+                    pc.position[0] + pc.total_radius >= WALL_INNER_RECT.right or
+                    pc.position[1] - pc.total_radius <= WALL_INNER_RECT.top or
+                    pc.position[1] + pc.total_radius >= WALL_INNER_RECT.bottom):
                     particles_touching = True
                     break
                 for other_pc in all_point_charges:
@@ -81,17 +95,20 @@ while running:
                 if particles_touching:
                     break
 
-            if start_btn.handle_event(event) and not particles_touching and len[all_point_charges] > 0:
-                sim_state = 1 # LOCK IN! Switch to Running
-                # Clear any active selections
-                selected_charge = None
-                context_menu.active = False
-                create_form.active = False
-                print("SIMULATION STARTED")
-            elif start_btn.handle_event(event) and particles_touching:
-                print("ERROR: Cannot start simulation while particles are touching walls or each other.")
-            elif start_btn.handle_event(event) and len(all_point_charges) == 0:
-                print("ERROR: Cannot start simulation without any point charges present.")
+            # Evaluate start button once per event to avoid duplicate calls
+            start_pressed = start_btn.handle_event(event)
+            if start_pressed:
+                if particles_touching:
+                    print("ERROR: Cannot start simulation while particles are touching walls or each other.")
+                elif len(all_point_charges) == 0:
+                    print("ERROR: Cannot start simulation without any point charges present.")
+                else:
+                    sim_state = 1 # LOCK IN! Switch to Running
+                    # Clear any active selections
+                    selected_charge = None
+                    context_menu.active = False
+                    create_form.active = False
+                    print("SIMULATION STARTED")
 
             # 2. Wall Slider
             wall_cor_slider.handle_event(event)
@@ -105,11 +122,22 @@ while running:
             form_data = create_form.handle_event(event)
             if form_data:
                 try:
+                    # Deletion requested from edit form
+                    if form_data.get('delete'):
+                        particle = form_data.get('particle')
+                        try:
+                            all_point_charges = [pc for pc in all_point_charges if pc != particle]
+                        except Exception:
+                            pass
+                        print("Particle deleted")
+                        continue
                     if form_data.get('edit'):
                         # Edit existing particle
                         particle = form_data['particle']
                         particle.charge = form_data['charge']
                         particle.mass = form_data['mass']
+                        # update coefficient of restitution if provided
+                        particle.e = form_data.get('e', getattr(particle, 'e', 1.0))
                         particle.environmental = form_data['environmental']
                         particle.static = form_data['static']
                         particle.color = (200, 0, 0) if particle.charge > 0 else (0, 0, 200)
@@ -117,12 +145,13 @@ while running:
                     else:
                         # Create new particle
                         new_pc = PointCharge(
-                            pos_0=form_data['position'],
-                            charge=form_data['charge'],
-                            mass=form_data['mass'],
-                            environmental=form_data['environmental'],
-                            static=form_data['static'],
-                            pc_id=p_id_counter
+                            form_data['position'],
+                            form_data['charge'],
+                            form_data['mass'],
+                            form_data['environmental'],
+                            form_data['static'],
+                            p_id_counter,
+                            form_data.get('e', 1.0)
                         )
                         all_point_charges.append(new_pc)
                         p_id_counter += 1
@@ -134,13 +163,47 @@ while running:
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if not context_menu.active and not create_form.active and not wall_cor_slider.dragging:
                     
-                    if event.button == 1: # Left Click (Select/Drag)
+                    if event.button == 1: # Left Click (Select/Drag / Double-Click Duplicate)
+                        clicked_pc = None
+                        click_pos = np.array(event.pos)
                         for pc in reversed(all_point_charges):
-                            dist = np.linalg.norm(pc.position - np.array(event.pos))
+                            dist = np.linalg.norm(pc.position - click_pos)
                             if dist < pc.total_radius:
-                                selected_charge = pc
-                                pc.dragging = True
+                                clicked_pc = pc
                                 break
+
+                        if clicked_pc is not None:
+                            now = pygame.time.get_ticks()
+                            # Double-click detection: same particle clicked twice within LAST_CLICK_MS
+                            if last_click_pc_id == getattr(clicked_pc, 'pc_id', None) and (now - last_click_time) <= LAST_CLICK_MS:
+                                # Duplicate particle slightly shifted to the right and down
+                                try:
+                                    shift = np.array([12.0, 12.0])
+                                    new_pos = clicked_pc.position + shift
+                                    new_pc = PointCharge(
+                                        new_pos.copy(),
+                                        clicked_pc.charge,
+                                        clicked_pc.mass,
+                                        clicked_pc.environmental,
+                                        clicked_pc.static,
+                                        p_id_counter,
+                                        getattr(clicked_pc, 'e', 1.0)
+                                    )
+                                    all_point_charges.append(new_pc)
+                                    p_id_counter += 1
+                                    print(f"Duplicated particle {getattr(clicked_pc,'pc_id','?')} -> {p_id_counter-1}")
+                                except Exception as e:
+                                    print(f"Duplication error: {e}")
+                                # reset click tracker to avoid triple-trigger
+                                last_click_time = 0
+                                last_click_pc_id = None
+                            else:
+                                # Single click: prepare for drag
+                                selected_charge = clicked_pc
+                                clicked_pc.dragging = True
+                                # store click info for possible double-click
+                                last_click_time = pygame.time.get_ticks()
+                                last_click_pc_id = getattr(clicked_pc, 'pc_id', None)
                                 
                     elif event.button == 3: # Right Click (Context Menu)
                         clicked_on_charge = False
@@ -160,6 +223,8 @@ while running:
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1 and selected_charge:
                     selected_charge.dragging = False
+                    # Set new initial position to current position after drag
+                    selected_charge.pos_0 = selected_charge.position.copy()
                     selected_charge = None
                     
             elif event.type == pygame.MOUSEMOTION:
@@ -167,14 +232,15 @@ while running:
                     selected_charge.position = np.array(event.pos, dtype=float)
 
         # === STATE 1: RUNNING PHASE (Physics Allowed) ===
-        elif sim_state == 1:
+        if sim_state == 1:
             # No dragging allowed here!
             # Just listening for "Pause" (Future Phase) or "Reset" (Global)
 
             if pause_btn.handle_event(event):
+                print(f"DEBUG: Pause clicked at {getattr(event, 'pos', None)}, create_form.active={create_form.active}, context_menu.active={context_menu.active}")
                 sim_state = 0.5 # Literally just pauses the sim
 
-            if reset_btn.handle_event(event):
+            elif reset_btn.handle_event(event):
                 sim_state = 0
 
                 # keep only environmental charges and reverts everything to their initial state
@@ -183,13 +249,25 @@ while running:
                 for pc in all_point_charges:
                     pc.reset()
 
+            # Trails toggle (only active in running state)
+            if trails_toggle.handle_event(event):
+                # handle_event already toggles internal state; when turned off, clear existing trails
+                if not trails_toggle.state:
+                    for pc in all_point_charges:
+                        try:
+                            pc.history.clear()
+                            pc.frame_counter = 0
+                        except Exception:
+                            pass
+
         elif sim_state == 0.5:
 
             # Paused State - Listen for Unpause from same button or Reset
-            if pause_btn.handle_event(event):
+            if unpause_btn.handle_event(event):
+                print(f"DEBUG: Unpause clicked at {getattr(event, 'pos', None)}, create_form.active={create_form.active}, context_menu.active={context_menu.active}")
                 sim_state = 1 # Resume Simulation
 
-            if reset_btn.handle_event(event):
+            elif reset_btn.handle_event(event):
                 sim_state = 0
 
                 # keep only environmental charges and reverts everything to their initial state
@@ -208,11 +286,45 @@ while running:
         pc.update_relative_scale(all_point_charges)
 
     # --- E. PHYSICS UPDATES (State Dependent) ---
+
     if sim_state == 1:
-        # This is where we will put the RK4 Integrator and Collision logic
-        # for pc in all_point_charges:
-        #     pc.update_physics(dt, all_point_charges, wall_cor)
-        pass
+
+        # Get arrays for physics engine
+        positions = np.array([p.pos for p in all_point_charges])
+        velocities = np.array([p.vel for p in all_point_charges])
+        charges = np.array([p.charge for p in all_point_charges])
+        masses = np.array([p.mass for p in all_point_charges])
+        static_status = np.array([p.static for p in all_point_charges], dtype=bool)
+
+        # 1. The RK4 Step (Motion)
+        physics_engine.get_accelerations(positions, velocities, charges, masses, static_status)
+        physics_engine.update_positions_velocities(dt, all_point_charges)
+        # 2. Collision Detection & Response with Walls
+        physics_engine.handle_wall_collisions(all_point_charges, wall_cor)
+        physics_engine.handle_particle_collisions(all_point_charges)
+
+        # Record trails for each particle (only if toggle enabled)
+        for pc in all_point_charges:
+            pc.record_trail(trails_toggle.state)
+            print(f"ID {getattr(pc, 'pc_id', 'N/A')}: Pos {pc.pos}, Vel {pc.vel}")
+
+    # Update pause text position (bouncing DVD logo style)
+    elif sim_state == 0.5:
+        pause_text_pos[0] += pause_text_vel[0] * dt*10
+        pause_text_pos[1] += pause_text_vel[1] * dt*19
+        
+        # Bounce off walls (with margin for text width/height)
+        text_bounds = pause_font.render("PAUSED", True, (0, 0, 0)).get_rect()
+        text_width = text_bounds.width
+        text_height = text_bounds.height
+        
+        if pause_text_pos[0] - text_width//2 <= 0 or pause_text_pos[0] + text_width//2 >= SW:
+            pause_text_vel[0] *= -1
+            pause_text_pos[0] = max(text_width//2, min(SW - text_width//2, pause_text_pos[0]))
+        
+        if pause_text_pos[1] - text_height//2 <= 0 or pause_text_pos[1] + text_height//2 >= SH:
+            pause_text_vel[1] *= -1
+            pause_text_pos[1] = max(text_height//2, min(SH - text_height//2, pause_text_pos[1]))
 
     # --- F. RENDERING (The Layers) ---
     
@@ -220,30 +332,63 @@ while running:
     ef_system.render(screen, all_point_charges)
     
     # Layer 1: Environment (Walls)
-    pygame.draw.rect(screen, WC, WALL_RECT, BT) 
+    pygame.draw.rect(screen, WC, WALL_RECT, WBT) 
     
-    # Layer 2: Particles
+    # Layer 2: Particles (render trails behind particles)
     for pc in all_point_charges:
+        # Render trails (if any)
+        pc.render_trails(screen)
+        # Render particle on top
         pc.render(screen)
 
     # Layer 3: GUI (State Dependent)
+
     # Always show Reset
     reset_btn.render(screen)
     
     if sim_state == 0:
         # Only show Setup GUI in Setup Mode
         start_btn.render(screen)
-        reset_btn.render(screen)
         wall_cor_slider.render(screen)
         context_menu.render(screen)
         create_form.render(screen)
+
     elif sim_state == 1:
-        reset_btn.render(screen)
         pause_btn.render(screen)
-        pass
+        trails_toggle.render(screen)
+
+    elif sim_state == 0.5:
+        unpause_btn.render(screen)
+        
+        # Render PAUSED text with bouncing and letter borders
+        pause_text = "PAUSED"
+        letter_color = (250, 190, 200)  # Pink
+        border_color = (60, 200, 60)  # Light Green
+        border_width = 3
+        
+        # Render each letter individually with border
+        letter_spacing = 10
+        total_width = sum(pause_font.render(char, True, letter_color).get_width() for char in pause_text) + (len(pause_text) - 1) * letter_spacing
+        start_x = pause_text_pos[0] - total_width // 2
+        
+        for i, char in enumerate(pause_text):
+            char_surf = pause_font.render(char, True, letter_color)
+            char_width = char_surf.get_width()
+            
+            # Draw border around letter (by rendering text 4 times around it)
+            for dx, dy in [(-border_width, 0), (border_width, 0), (0, -border_width), (0, border_width)]:
+                border_surf = pause_font.render(char, True, border_color)
+                screen.blit(border_surf, (start_x + dx, pause_text_pos[1] - char_surf.get_height()//2 + dy))
+            
+            # Draw actual letter on top
+            screen.blit(char_surf, (start_x, pause_text_pos[1] - char_surf.get_height()//2))
+            start_x += char_width + letter_spacing
 
     pygame.display.flip()
-    clock.tick(60)
+    clock.tick(144)
+
+    for pc in all_point_charges:
+        print(f"ID {getattr(pc, 'pc_id', 'N/A')}: Pos {pc.pos}, Vel {pc.vel}, Pos_0 {pc.pos_0}, Vel_0 {pc.vel_0}")
 
 pygame.quit()
 sys.exit()
