@@ -29,7 +29,7 @@ trails_toggle = TrailsToggle()
 wall_cor_slider = WallCORSlider(30, 20, 150, 30, initial_value=BW_coeff)
 dt_slider = GenericSlider(1250, 50, 150, 30,min_val=0.00005, max_val=0.02, initial_val=1/1000, 
                           label="Time Step (dt):", fmt="{:.5f}")
-fps_slider = GenericSlider(1250, 100, 150, 30, min_val=60, max_val=400, initial_val=60, 
+fps_slider = GenericSlider(1250, 100, 150, 30, min_val=60, max_val=400, initial_val=100, 
                            label="Max FPS:", fmt="{:.0f}")
 
 # engine

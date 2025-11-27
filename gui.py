@@ -137,8 +137,8 @@ class WallCORSlider:
             
     def render(self, screen):
         # Draw label
-        label_surf = self.font.render(self.label, True, (0, 0, 0))
-        screen.blit(label_surf, (self.rect.x, self.rect.y - 20))
+        #label_surf = self.font.render(self.label, True, (0, 0, 0))
+        #screen.blit(label_surf, (self.rect.x, self.rect.y - 20))
         
         # Draw track
         pygame.draw.rect(screen, (200, 200, 200), self.slider_rect)
@@ -412,50 +412,84 @@ class TrailsToggle:
         txt_rect = txt.get_rect(center=self.rect.center)
         screen.blit(txt, txt_rect)
 
+# --- NEW COMPONENT: ANGLE WHEEL ---
+class AngleWheel:
+    
+    def __init__(self, x, y, radius=35, initial_angle=0.0):
+        self.center = (x, y)
+        self.radius = radius
+        self.angle = initial_angle
+        self.rect = pygame.Rect(x - radius, y - radius, radius * 2, radius * 2)
+        self.dragging = False
+        
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            dist = np.linalg.norm(np.array(event.pos) - np.array(self.center))
+            if dist <= self.radius:
+                self.dragging = True
+                self.update_angle(event.pos)
+                return True
+                
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self.dragging = False
+            
+        elif event.type == pygame.MOUSEMOTION and self.dragging:
+            self.update_angle(event.pos)
+            return True
+        return False
+
+    def update_angle(self, mouse_pos):
+        dx = mouse_pos[0] - self.center[0]
+        dy = mouse_pos[1] - self.center[1]
+        # Pygame Y is down, so mathematical angle needs adjustment if we want standard trig
+        self.angle = np.arctan2(dy, dx)   
+        
+    def render(self, screen):
+        # Update rect position in case center moved (e.g. when form moves)
+        self.rect.topleft = (self.center[0] - self.radius, self.center[1] - self.radius)
+        
+        pygame.draw.circle(screen, (220, 220, 220), self.center, self.radius)
+        pygame.draw.circle(screen, (0, 0, 0), self.center, self.radius, 2)
+        
+        end_x = self.center[0] + self.radius * np.cos(self.angle)
+        end_y = self.center[1] + self.radius * np.sin(self.angle)
+        pygame.draw.line(screen, (200, 0, 0), self.center, (end_x, end_y), 3)
+        pygame.draw.circle(screen, (0, 0, 0), self.center, 4)
+
 class CreationForm:
     def __init__(self):
         self.active = False
-        self.rect = pygame.Rect(0, 0, 380, 400)
+        self.rect = pygame.Rect(0, 0, 380, 500) # INCREASED HEIGHT to 500
         self.target_pos = (0,0)
         self.font = pygame.font.SysFont('Arial', 16, bold=True)
-        self.edit_mode = False  # False = Create, True = Edit
-        self.editing_particle = None  # Reference to particle being edited
+        self.edit_mode = False
+        self.editing_particle = None
         
-        # memory storage
-        self.creation_memory = {}
+        self.creation_memory = {} 
 
-        # 1. Remember Toggle (Standard Green/Red)
+        # --- COMPONENTS ---
         self.btn_remember = BinaryToggle(0, 0, 120, 25, "Remember Input", False)
-        
-        # 2. Charge Input & Sign Toggle (CUSTOM RED/BLUE)
-        self.btn_charge_sign = BinaryToggle(0, 0, 50, 30, "", True, 
-                                            text_true="+", text_false="-",
-                                            col_true=COL_POS, col_false=COL_NEG)
-        
+        self.btn_charge_sign = BinaryToggle(0, 0, 50, 30, "", True, text_true="+", text_false="-", col_true=COL_POS, col_false=COL_NEG)
         self.input_charge_mantissa = MantissaTextBox(0, 0, 80, 30, "1.0")
         self.input_charge_exponent = ExponentTextBox(0, 0, 60, 30, "0")
-        
-        # 3. Mass Input
         self.input_mass_mantissa = MantissaTextBox(0, 0, 80, 30, "1.0")
         self.input_mass_exponent = ExponentTextBox(0, 0, 60, 30, "0")
-        
-        # 4. Environmental & Static Toggles (Standard Green/Red)
         self.btn_env = BinaryToggle(0, 0, 60, 30, "Env", True)
-        self.btn_static = BinaryToggle(0, 0, 60, 30, "Static", True)
+        self.btn_static = BinaryToggle(0, 0, 60, 30, "Static", False)
+        self.slider_restitution = WallCORSlider(0, 0, 160, 20, initial_value=1.0) # change its label
+        self.slider_restitution.label = "Restitution:"
         
-        # 5. Action Buttons
+        # --- VELOCITY COMPONENTS ---
+        self.angle_wheel = AngleWheel(0, 0, 35, initial_angle=0.0) # Radius 35
+        self.input_vel_mantissa = MantissaTextBox(0, 0, 80, 30, "0.0")
+        self.input_vel_exponent = ExponentTextBox(0, 0, 60, 30, "0")
+        
+        # Buttons
         self.btn_submit = pygame.Rect(0,0, 100, 30)
         self.btn_cancel = pygame.Rect(0,0, 100, 30)
-        # Delete button (visible only in edit mode)
         self.btn_delete = pygame.Rect(0,0, 100, 30)
-        # 6. Coefficient of Restitution Slider (per-particle)
-        # Initialize with placeholder position; `show()` will position it.
-        self.slider_restitution = WallCORSlider(0, 0, 160, 20, initial_value=1.0)
-        self.slider_restitution.label = "Restitution:" 
-        # Remembered input storage (persist last submitted inputs when remember toggle is ON)
 
     def show(self, pos, particle=None):
-        """Show form. If particle is provided, enter edit mode."""
         self.active = True
         self.target_pos = pos
         self.edit_mode = particle is not None
@@ -463,209 +497,225 @@ class CreationForm:
         self.rect.center = (SW//2, SH//2)
         
         if self.edit_mode and particle:
-            # Load particle's current values into form
-            # Decompose charge into mantissa and exponent
             charge_val = abs(particle.charge)
-            if charge_val == 0:
-                c_mantissa, c_exponent = 1.0, 0
+            if charge_val == 0: c_mantissa, c_exponent = 1.0, 0
             else:
                 import math
                 c_exponent = int(math.floor(math.log10(charge_val)))
                 c_mantissa = charge_val / (10 ** c_exponent)
             
-            # Decompose mass into mantissa and exponent
             mass_val = particle.mass
-            if mass_val == 0:
-                m_mantissa, m_exponent = 1.0, 0
+            if mass_val == 0: m_mantissa, m_exponent = 1.0, 0
             else:
                 import math
                 m_exponent = int(math.floor(math.log10(mass_val)))
                 m_mantissa = mass_val / (10 ** m_exponent)
             
+            # Velocity load
+            vel_vector = particle.vel_0
+            vel_mag = np.linalg.norm(vel_vector)
+            vel_angle = np.arctan2(vel_vector[1], vel_vector[0])
+            
+            if vel_mag == 0: v_mantissa, v_exponent = 0.0, 0
+            else:
+                import math
+                v_exponent = int(math.floor(math.log10(vel_mag)))
+                v_mantissa = vel_mag / (10 ** v_exponent)
+
             self.input_charge_mantissa.text = f"{c_mantissa:.1f}"
             self.input_charge_exponent.text = str(c_exponent)
             self.input_mass_mantissa.text = f"{m_mantissa:.1f}"
             self.input_mass_exponent.text = str(m_exponent)
+            
+            self.input_vel_mantissa.text = f"{v_mantissa:.1f}"
+            self.input_vel_exponent.text = str(v_exponent)
+            self.angle_wheel.angle = vel_angle
+            
             self.btn_charge_sign.state = particle.charge >= 0
             self.btn_env.state = particle.environmental
             self.btn_static.state = particle.static
-            # load particle's restitution if present
             try:
                 self.slider_restitution.value = float(particle.e)
             except Exception:
                 self.slider_restitution.value = 1.0
 
-            # remember button
         elif self.btn_remember.state and self.creation_memory:
-            # CREATE MODE + MEMORY: Load from isolated memory
+            # LOAD FROM MEMORY
             self.input_charge_mantissa.text = self.creation_memory.get('c_man', "1.0")
             self.input_charge_exponent.text = self.creation_memory.get('c_exp', "0")
             self.input_mass_mantissa.text = self.creation_memory.get('m_man', "1.0")
             self.input_mass_exponent.text = self.creation_memory.get('m_exp', "0")
+            self.input_vel_mantissa.text = self.creation_memory.get('v_man', "0.0")
+            self.input_vel_exponent.text = self.creation_memory.get('v_exp', "0")
+            self.angle_wheel.angle = self.creation_memory.get('v_angle', 0.0)
+            
             self.btn_charge_sign.state = self.creation_memory.get('sign', True)
             self.btn_env.state = self.creation_memory.get('env', True)
             self.btn_static.state = self.creation_memory.get('static', True)
             self.slider_restitution.value = self.creation_memory.get('restitution', 1.0)
 
         else:
-            # Defaults
-            self.input_charge_mantissa.text = "1"
+            # DEFAULT
+            self.input_charge_mantissa.text = "1.0"
             self.input_charge_exponent.text = "0"
-            self.input_mass_mantissa.text = "1"
+            self.input_mass_mantissa.text = "1.0"
             self.input_mass_exponent.text = "0"
-            self.btn_charge_sign.state = True
-            self.btn_env.state = True
-            self.btn_static.state = True
+            self.input_vel_mantissa.text = "0.0"
+            self.input_vel_exponent.text = "0"
+            self.angle_wheel.angle = 0.0
             
-        # --- LAYOUT CALCULATION ---
+            self.btn_charge_sign.state = True
+            self.btn_env.state = True  
+            self.btn_static.state = False
+            self.slider_restitution.value = 1.0
+            
+        # --- LAYOUT CALCULATION (FIXED SPACING) ---
         rx, ry = self.rect.x, self.rect.y
+        self.btn_remember.rect.topright = (self.rect.right - 20, ry + 35)
         
-        # Remember Input (Top Right)
-        self.btn_remember.rect.topright = (self.rect.right - 20, ry + 30)
+        # Charge (Y=100)
+        self.btn_charge_sign.rect.topleft = (rx + 40, ry + 100)
+        self.input_charge_mantissa.rect.topleft = (rx + 100, ry + 100)
+        self.input_charge_exponent.rect.topleft = (rx + 290, ry + 100) # Pushed Right
         
-        # Charge Row (Moved down to Y=90 for label clearance)
-        self.btn_charge_sign.rect.topleft = (rx + 40, ry + 90)
-        self.input_charge_mantissa.rect.topleft = (rx + 100, ry + 90)
-        self.input_charge_exponent.rect.topleft = (rx + 230, ry + 90)
+        # Mass (Y=170)
+        self.input_mass_mantissa.rect.topleft = (rx + 100, ry + 170)
+        self.input_mass_exponent.rect.topleft = (rx + 290, ry + 170) # Pushed Right
         
-        # Mass Row (Moved down to Y=160)
-        self.input_mass_mantissa.rect.topleft = (rx + 100, ry + 160)
-        self.input_mass_exponent.rect.topleft = (rx + 230, ry + 160)
-        # Restitution Slider (between mass and toggles)
-        self.slider_restitution = WallCORSlider(rx + 100, ry + 300, 160, 20, initial_value=self.slider_restitution.value)
-        self.slider_restitution.label = "Restitution:"
+        # Restitution, need to fix the labels
+        self.slider_restitution.rect.topleft = (rx + 100, ry + 240)
+        self.slider_restitution.slider_rect.topleft = (rx + 100, ry + 240 + 20 // 2 - 5)
         
-        # Toggles Row
-        self.btn_env.rect.topleft = (rx + 50, ry + 230)
-        self.btn_static.rect.topleft = (rx + 200, ry + 230)
+        # Velocity (Y=310)
+        self.angle_wheel.center = (rx + 75, ry + 300 + 15) # Centered for 35px height box
+        self.input_vel_mantissa.rect.topleft = (rx + 140, ry + 300)
+        self.input_vel_exponent.rect.topleft = (rx + 270, ry + 300) # Pushed Right
+
+        # Toggles (Y=390)
+        self.btn_env.rect.topleft = (rx + 50, ry + 380)
+        self.btn_static.rect.topleft = (rx + 200, ry + 380)
         
         # Buttons
-        self.btn_submit.bottomleft = (rx + 30, self.rect.bottom - 20)
-        # Place delete button centered between submit and cancel
-        self.btn_delete.centerx = self.rect.centerx
-        self.btn_delete.bottom = self.rect.bottom - 20
-        self.btn_cancel.bottomright = (self.rect.right - 30, self.rect.bottom - 20)
+        self.btn_submit.bottomleft = (rx + 30, self.rect.bottom - 25)
+        self.btn_delete.midbottom = (self.rect.centerx, self.rect.bottom - 25)
+        self.btn_cancel.bottomright = (self.rect.right - 30, self.rect.bottom - 25)
 
     def handle_event(self, event):
         if not self.active: return None
 
-        # Pass events to children
         self.input_charge_mantissa.handle_event(event)
         self.input_charge_exponent.handle_event(event)
         self.input_mass_mantissa.handle_event(event)
         self.input_mass_exponent.handle_event(event)
+        self.input_vel_mantissa.handle_event(event)
+        self.input_vel_exponent.handle_event(event)
+        self.angle_wheel.handle_event(event)
+        
         self.btn_remember.handle_event(event)
         self.btn_charge_sign.handle_event(event)
         self.btn_env.handle_event(event)
         self.btn_static.handle_event(event)
-        # Restitution slider
-        try:
-            self.slider_restitution.handle_event(event)
-        except Exception:
-            pass
+        self.slider_restitution.handle_event(event)
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            # Check Submit
             if self.btn_submit.collidepoint(event.pos):
+                c_man = self.input_charge_mantissa.get_value()
+                c_exp = self.input_charge_exponent.get_value()
+                m_man = self.input_mass_mantissa.get_value()
+                m_exp = self.input_mass_exponent.get_value()
+                v_man = self.input_vel_mantissa.get_value()
+                v_exp = self.input_vel_exponent.get_value()
+                cor_val = getattr(self.slider_restitution, 'value', 1.0)
                 
-                # Validate Inputs
-                c_mantissa = self.input_charge_mantissa.get_value()
-                c_exponent = self.input_charge_exponent.get_value()
-                m_mantissa = self.input_mass_mantissa.get_value()
-                m_exponent = self.input_mass_exponent.get_value()
-                
-                print(f"DEBUG: c_mantissa={c_mantissa}, c_exponent={c_exponent}, m_mantissa={m_mantissa}, m_exponent={m_exponent}")
-                
-                # Validation: All must be numbers, mantissas in range [1.0-9.9], mass > 0
-                if (c_mantissa is not None and c_exponent is not None and 
-                    m_mantissa is not None and m_exponent is not None and
-                    1.0 <= c_mantissa <= 9.9 and 1.0 <= m_mantissa <= 9.9):
+                # Validation
+                if (c_man is not None and c_exp is not None and 
+                    m_man is not None and m_exp is not None and
+                    v_man is not None and v_exp is not None):
                     
-                    # Construct charge value: mantissa * 10^exponent
-                    charge = c_mantissa * (10 ** c_exponent)
-                    if not self.btn_charge_sign.state: # If state is False (Blue/-)
-                        charge = -charge
-                    
-                    # Construct mass value: mantissa * 10^exponent
-                    mass = m_mantissa * (10 ** m_exponent)
-                    
-                    print(f"DEBUG: Validation passed. charge={charge}, mass={mass}")
-                    
-                    if mass > 0:
-                        # If remember toggle is ON, store the current inputs for next create
-                        # IF CREATING, SAVE TO MEMORY
+                    if 1.0 <= c_man <= 9.9 and 1.0 <= m_man <= 9.9 and v_man >= 0:
+                        
                         if self.btn_remember.state and not self.edit_mode:
-                                try:
-                                    self.creation_memory = {
-                                        'c_man': self.input_charge_mantissa.text,
-                                        'c_exp': self.input_charge_exponent.text,
-                                        'm_man': self.input_mass_mantissa.text,
-                                        'm_exp': self.input_mass_exponent.text,
-                                        'sign': self.btn_charge_sign.state,
-                                        'env': self.btn_env.state,
-                                        'static': self.btn_static.state,
-                                        'restitution': getattr(self.slider_restitution, 'value', 1.0)
-                                }
-                                except Exception:
-                                    pass
-                        self.active = False
-                        result = {
-                            "charge": charge,
-                            "mass": mass,
-                            "e": getattr(self.slider_restitution, 'value', 1.0),
-                            "environmental": self.btn_env.state,
-                            "static": self.btn_static.state
-                        }
+                            self.creation_memory = {
+                                'c_man': self.input_charge_mantissa.text,
+                                'c_exp': self.input_charge_exponent.text,
+                                'm_man': self.input_mass_mantissa.text,
+                                'm_exp': self.input_mass_exponent.text,
+                                'v_man': self.input_vel_mantissa.text,
+                                'v_exp': self.input_vel_exponent.text,
+                                'v_angle': self.angle_wheel.angle,
+                                'sign': self.btn_charge_sign.state,
+                                'env': self.btn_env.state,
+                                'static': self.btn_static.state,
+                                'restitution': cor_val
+                            }
+
+                        charge = c_man * (10 ** c_exp)
+                        if not self.btn_charge_sign.state: charge = -charge
+                        mass = m_man * (10 ** m_exp)
                         
-                        if self.edit_mode:
-                            # Edit mode: return particle reference and edited flag
-                            result["particle"] = self.editing_particle
-                            result["edit"] = True
-                        else:
-                            # Create mode: return position for new particle
-                            result["position"] = np.array(self.target_pos, dtype=float)
+                        vel_mag = v_man * (10 ** v_exp)
+                        angle = self.angle_wheel.angle
+                        vx = vel_mag * np.cos(angle)
+                        vy = vel_mag * np.sin(angle)
+                        velocity_vector = np.array([vx, vy], dtype=float)
                         
-                        return result
+                        if mass > 0:
+                            self.active = False
+                            result = {
+                                "pos": self.target_pos,
+                                "charge": charge,
+                                "mass": mass,
+                                "velocity": velocity_vector,
+                                "environmental": self.btn_env.state,
+                                "static": self.btn_static.state,
+                                "e": np.clip(cor_val, 0.0, 2.0)
+                            }
+                            
+                            if self.edit_mode:
+                                result["particle"] = self.editing_particle
+                                result["edit"] = True
+                            else:
+                                result["position"] = np.array(self.target_pos, dtype=float)
+                                result["delete"] = False
+                            return result
             
-            # Check Delete (only in edit mode)
-            if self.edit_mode and self.btn_delete.collidepoint(event.pos):
-                # Return a delete action with particle reference
+            elif self.edit_mode and self.btn_delete.collidepoint(event.pos):
                 self.active = False
                 return {"delete": True, "particle": self.editing_particle}
 
-            # Check Cancel
             elif self.btn_cancel.collidepoint(event.pos):
                 self.active = False
                 return None
-                
         return None
 
     def render(self, screen):
         if not self.active: return
-        
-        # Draw Panel
         pygame.draw.rect(screen, COL_BG, self.rect)
         pygame.draw.rect(screen, COL_BORDER, self.rect, 2)
         
-        # Title (different based on mode)
         title_text = "Edit Charge" if self.edit_mode else "Create Charge"
         title = self.font.render(title_text, True, COL_TEXT)
         screen.blit(title, (self.rect.x + 20, self.rect.y + 20))
         
-        # Labels for TextBoxes
+        # Labels
         l_chg = self.font.render("Charge:", True, COL_TEXT)
         screen.blit(l_chg, (self.rect.x + 100, self.input_charge_mantissa.rect.top - 20))
-        
         l_mass = self.font.render("Mass:", True, COL_TEXT)
         screen.blit(l_mass, (self.rect.x + 100, self.input_mass_mantissa.rect.top - 20))
+        l_cor = self.font.render("Bounce:", True, COL_TEXT)
+        screen.blit(l_cor, (self.rect.x + 100, self.slider_restitution.rect.top - 20))
         
-        # x 10^ labels
-        exp_label_c = self.font.render("x 10 ^", True, COL_TEXT)
-        screen.blit(exp_label_c, (self.input_charge_mantissa.rect.right + 10, self.input_charge_mantissa.rect.centery - 8))
-        
-        exp_label_m = self.font.render("x 10 ^", True, COL_TEXT)
-        screen.blit(exp_label_m, (self.input_mass_mantissa.rect.right + 10, self.input_mass_mantissa.rect.centery - 8))
-        
+        l_vel = self.font.render("Initial Velocity:", True, COL_TEXT)
+        screen.blit(l_vel, (self.rect.x + 140, self.input_vel_mantissa.rect.top - 20))
+
+        # Exponent Labels (x 10 ^)
+        exp_c = self.font.render("x 10 ^", True, COL_TEXT)
+        screen.blit(exp_c, (self.input_charge_mantissa.rect.right + 10, self.input_charge_mantissa.rect.centery - 8))
+        exp_m = self.font.render("x 10 ^", True, COL_TEXT)
+        screen.blit(exp_m, (self.input_mass_mantissa.rect.right + 10, self.input_mass_mantissa.rect.centery - 8))
+        exp_v = self.font.render("x 10 ^", True, COL_TEXT)
+        screen.blit(exp_v, (self.input_vel_mantissa.rect.right + 10, self.input_vel_mantissa.rect.centery - 8))
+
         # Render Components
         self.btn_remember.render(screen)
         self.btn_charge_sign.render(screen)
@@ -673,16 +723,14 @@ class CreationForm:
         self.input_charge_exponent.render(screen)
         self.input_mass_mantissa.render(screen)
         self.input_mass_exponent.render(screen)
-        # Restitution slider render
-        try:
-            self.slider_restitution.render(screen)
-        except Exception:
-            pass
+        self.slider_restitution.render(screen)
+        self.angle_wheel.render(screen)
+        self.input_vel_mantissa.render(screen)
+        self.input_vel_exponent.render(screen)
+        
         self.btn_env.render(screen)
         self.btn_static.render(screen)
         
-        # Render Action Buttons
-        # Submit (Green-ish)
         pygame.draw.rect(screen, (100, 200, 100), self.btn_submit)
         pygame.draw.rect(screen, (0,0,0), self.btn_submit, 1)
         submit_text = "CHANGE" if self.edit_mode else "SPAWN"
@@ -690,20 +738,18 @@ class CreationForm:
         ts_rect = ts.get_rect(center=self.btn_submit.center)
         screen.blit(ts, ts_rect)
         
-        # Delete (Black with white text) - only in edit mode
-        if self.edit_mode:
-            pygame.draw.rect(screen, (0, 0, 0), self.btn_delete)
-            pygame.draw.rect(screen, (0,0,0), self.btn_delete, 1)
-            td = self.font.render("DELETE", True, (255,255,255))
-            td_rect = td.get_rect(center=self.btn_delete.center)
-            screen.blit(td, td_rect)
-
-        # Cancel (Red-ish)
         pygame.draw.rect(screen, (200, 100, 100), self.btn_cancel)
         pygame.draw.rect(screen, (0,0,0), self.btn_cancel, 1)
         tc = self.font.render("CANCEL", True, (0,0,0))
         tc_rect = tc.get_rect(center=self.btn_cancel.center)
         screen.blit(tc, tc_rect)
+
+        if self.edit_mode:
+            pygame.draw.rect(screen, (50, 50, 50), self.btn_delete)
+            pygame.draw.rect(screen, (0,0,0), self.btn_delete, 1)
+            td = self.font.render("DELETE", True, (255,255,255))
+            td_rect = td.get_rect(center=self.btn_delete.center)
+            screen.blit(td, td_rect)
 
 # for more sliders
 
