@@ -704,3 +704,76 @@ class CreationForm:
         tc = self.font.render("CANCEL", True, (0,0,0))
         tc_rect = tc.get_rect(center=self.btn_cancel.center)
         screen.blit(tc, tc_rect)
+
+# for more sliders
+
+class GenericSlider:
+    """A reusable slider for any numeric value."""
+    def __init__(self, x, y, width, height, min_val, max_val, initial_val, label, fmt="{:.4f}"):
+        self.rect = pygame.Rect(x, y, width, height)
+        self.slider_rect = pygame.Rect(x, y + height // 2 - 5, width, 10)
+        self.knob_radius = 8
+        
+        self.min_val = min_val
+        self.max_val = max_val
+        self.value = initial_val
+        self.fmt = fmt # Format string for text (e.g., 4 decimal places)
+        self.label = label
+        
+        self.dragging = False
+        self.font = pygame.font.SysFont('Arial', 14)
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            # Check knob collision based on current value
+            val_norm = (self.value - self.min_val) / (self.max_val - self.min_val)
+            knob_x = self.slider_rect.x + val_norm * self.slider_rect.width
+            knob_rect = pygame.Rect(knob_x - self.knob_radius, self.slider_rect.y - self.knob_radius, 
+                                   self.knob_radius * 2, self.knob_radius * 2)
+            
+            # Allow clicking anywhere on the bar to jump
+            if knob_rect.collidepoint(event.pos) or self.slider_rect.collidepoint(event.pos):
+                self.dragging = True
+                self.update_from_mouse(event.pos)
+                return True
+                
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self.dragging = False
+            
+        elif event.type == pygame.MOUSEMOTION and self.dragging:
+            self.update_from_mouse(event.pos)
+            return True
+        return False
+
+    def update_from_mouse(self, mouse_pos):
+        relative_x = mouse_pos[0] - self.slider_rect.x
+        ratio = max(0.0, min(1.0, relative_x / self.slider_rect.width))
+        self.value = self.min_val + ratio * (self.max_val - self.min_val)
+
+    def render(self, screen):
+        # Label
+        label_surf = self.font.render(self.label, True, (0, 0, 0))
+        screen.blit(label_surf, (self.rect.x, self.rect.y - 20))
+        
+        # Track
+        pygame.draw.rect(screen, (200, 200, 200), self.slider_rect)
+        pygame.draw.rect(screen, (0, 0, 0), self.slider_rect, 1)
+        
+        # Normalized position for drawing
+        val_norm = (self.value - self.min_val) / (self.max_val - self.min_val)
+        
+        # Filled portion
+        filled_width = self.slider_rect.width * val_norm
+        filled_rect = pygame.Rect(self.slider_rect.x, self.slider_rect.y, filled_width, self.slider_rect.height)
+        pygame.draw.rect(screen, (100, 150, 255), filled_rect)
+        
+        # Knob
+        knob_x = self.slider_rect.x + val_norm * self.slider_rect.width
+        knob_color = (50, 100, 200) if self.dragging else (100, 150, 255)
+        pygame.draw.circle(screen, knob_color, (int(knob_x), int(self.slider_rect.centery)), self.knob_radius)
+        pygame.draw.circle(screen, (0, 0, 0), (int(knob_x), int(self.slider_rect.centery)), self.knob_radius, 2)
+        
+        # Value Text
+        val_str = self.fmt.format(self.value)
+        value_text = self.font.render(val_str, True, (0, 0, 0))
+        screen.blit(value_text, (self.slider_rect.right + 10, self.slider_rect.centery - 7))

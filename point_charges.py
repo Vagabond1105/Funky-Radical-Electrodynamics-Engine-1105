@@ -7,6 +7,56 @@ import numpy as np
 from constants_for_all_files import *
 from collections import deque
 
+# --- NEW ARROW CLASS (ENCAPSULATED HERE) ---
+class Arrow:
+    """
+    Renders a vector arrow given a start position, length (pixels), and angle (radians).
+    Standard Math Angle: 0 = Right, PI/2 = Down (Pygame coords).
+    """
+    def __init__(self, start_pos, length, angle, color=(0, 0, 0), thickness=2):
+        self.start_pos = np.array(start_pos, dtype=float)
+        self.length = length
+        self.angle = angle 
+        self.color = color
+        self.thickness = thickness
+
+    def update(self, start_pos, length, angle):
+        """Update the vector properties dynamically."""
+        self.start_pos = np.array(start_pos, dtype=float)
+        self.length = length
+        self.angle = angle
+
+    def render(self, screen):
+        if self.length < 1: return # Don't draw dots for zero vectors
+
+        # 1. Calculate End Point (Polar -> Cartesian)
+        # Pygame Y is Down, so positive angle goes CLOCKWISE from Right if we just do cos/sin directly.
+        # If you want standard math (Counter-Clockwise), you might need -sin.
+        # Assuming standard Pygame polar:
+        end_x = self.start_pos[0] + self.length * np.cos(self.angle)
+        end_y = self.start_pos[1] + self.length * np.sin(self.angle) # +sin for Y-down
+        end_pos = (end_x, end_y)
+
+        # 2. Draw Shaft
+        pygame.draw.line(screen, self.color, self.start_pos, end_pos, self.thickness)
+
+        # 3. Draw Head
+        # Calculate two points back from the tip
+        head_len = 10 # Pixel size of the arrow head
+        head_angle = np.radians(150) # Angle of the arrow wings relative to shaft
+        
+        # Wing 1
+        p1_x = end_x + head_len * np.cos(self.angle + head_angle)
+        p1_y = end_y + head_len * np.sin(self.angle + head_angle)
+
+        # Wing 2
+        p2_x = end_x + head_len * np.cos(self.angle - head_angle)
+        p2_y = end_y + head_len * np.sin(self.angle - head_angle)
+
+        # Draw filled triangle
+        pygame.draw.polygon(screen, self.color, [end_pos, (p1_x, p1_y), (p2_x, p2_y)])
+
+
 # Point Charge Class
 
 class PointCharge:
@@ -41,6 +91,11 @@ class PointCharge:
         # Draw the ghost shape ONCE onto this surface
         # (It's just the colored core, semi-transparent)
         pygame.draw.circle(self.ghost_surf, self.color, (self.total_radius, self.total_radius), int(self.core_radius))
+
+        # --- ARROW INTEGRATION ---
+        # Initial dummy arrow, updated in loop
+        self.v0_arrow = Arrow(self.position, 0, 0, color=(50, 255, 50)) 
+        self.arrow_display = True
 
     @property
     def pos(self):
@@ -86,6 +141,10 @@ class PointCharge:
         
         # 3. Sum for total hitbox
         self.total_radius = self.core_radius + self.border_radius
+        
+        # update ghost surface with new size
+        self.ghost_surf = pygame.Surface((int(self.total_radius*2), int(self.total_radius*2)), pygame.SRCALPHA)
+        pygame.draw.circle(self.ghost_surf, self.color, (int(self.total_radius), int(self.total_radius)), int(self.core_radius))
 
     def reset(self):
         # Always revert to initial state (position and velocity)
@@ -97,6 +156,40 @@ class PointCharge:
             self.frame_counter = 0
         except Exception:
             pass
+
+    # Helper for angle calc
+    @staticmethod
+    def calc_phi(v): 
+        # returns angle in radians for vector v
+        if v[0] == 0 and v[1] == 0: return 0.0
+        return np.arctan2(v[1], v[0])
+
+    def update_arrow(self, all_charges):
+        """Calculates arrow length and angle based on relative velocity."""
+        if not all_charges: return
+
+        angle = PointCharge.calc_phi(self.vel_0)
+
+        # Scaling logic for length
+        # Find max velocity in the system to normalize arrow length
+        max_v0 = max(np.linalg.norm(pc.vel_0) for pc in all_charges)
+        min_v0 = min(np.linalg.norm(pc.vel_0) for pc in all_charges)
+        
+        # Avoid zero range div
+        if max_v0 == 0:
+            length = 0
+        else:
+            this_v0_mag = np.linalg.norm(self.vel_0)
+            # Scale between 20px and 80px
+            if max_v0 == min_v0:
+                scale = 1.0 if max_v0 > 0 else 0
+            else:
+                scale = (this_v0_mag - min_v0) / (max_v0 - min_v0)
+            
+            # Base length 20, max add 60
+            length = 20 + (scale * 60) if this_v0_mag > 0 else 0
+
+        self.v0_arrow.update(self.position, length, angle)
     
     def render(self, screen):
         # Draw Border (Mass representation) - Colored based on charge
@@ -117,6 +210,10 @@ class PointCharge:
             pygame.draw.circle(screen, (255, 255, 255), self.position.astype(int), int(self.total_radius + 2), 2)
             # sets new position while dragging
             self.position = np.array(pygame.mouse.get_pos(), dtype=float)
+
+        # Render Arrow (Only if display is enabled and not static)
+        if self.arrow_display and not self.static:
+            self.v0_arrow.render(screen)
 
     def record_trail(self, enabled=False):
         """Record current position into history when enabled.
@@ -158,8 +255,6 @@ class PointCharge:
             pygame.draw.circle(surf, col, (surf_size // 2, surf_size // 2), r)
             blit_pos = (int(pos[0] - surf_size // 2), int(pos[1] - surf_size // 2))
             screen.blit(surf, blit_pos)
-
-        
 
     def resolve_collision(self, other):
         """
@@ -236,3 +331,22 @@ class PointCharge:
             self.vel += impulse * inv_mass1
         if not other.static:
             other.vel -= impulse * inv_mass2
+
+    def exert_force(self, other):
+
+        # Calculate the electric force exerted on this charge by another charge
+        k = 8.9875517873681764e9 # Coulomb's constant in N·m²/C²
+        diff = other.position - self.position
+        dist = np.linalg.norm(diff)
+        if dist == 0:
+            return np.array([0.0, 0.0]) # Avoid divide by zero
+
+        force_magnitude = k * abs(self.charge * other.charge) / (dist ** 2)
+        force_direction = diff / dist
+
+        # Determine if the force is attractive or repulsive
+        if self.charge * other.charge > 0:
+            force_direction = -force_direction # Repulsive force
+
+        force = force_direction * force_magnitude
+        return force

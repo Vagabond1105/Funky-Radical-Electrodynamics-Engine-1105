@@ -10,7 +10,7 @@ from constants_for_all_files import *
 
 # constants for physics calculations
 
-dt = 1/9001
+dt = 1/9000
 
 # Physics Engine Class
 

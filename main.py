@@ -25,8 +25,14 @@ context_menu = ContextMenu()
 create_form = CreationForm()
 trails_toggle = TrailsToggle()
 
-# Slider positioned near the wall constants
+# Sliders
 wall_cor_slider = WallCORSlider(30, 20, 150, 30, initial_value=BW_coeff)
+dt_slider = GenericSlider(1250, 50, 150, 30,min_val=0.00005, max_val=0.02, initial_val=1/1000, 
+                          label="Time Step (dt):", fmt="{:.5f}")
+fps_slider = GenericSlider(1250, 100, 150, 30, min_val=60, max_val=400, initial_val=60, 
+                           label="Max FPS:", fmt="{:.0f}")
+
+# engine
 physics_engine = PhysicsEngine()
 
 # --- 3. STATE MANAGEMENT ---
@@ -54,6 +60,9 @@ pause_font = pygame.font.SysFont("Roboto", 74)
 running = True
 while running:
     
+    dt = dt_slider.value
+    fps = int(fps_slider.value)
+
     # --- A. TIME & MOUSE ---
     mouse_pos = pygame.mouse.get_pos()
     
@@ -110,8 +119,10 @@ while running:
                     create_form.active = False
                     print("SIMULATION STARTED")
 
-            # 2. Wall Slider
+            # 2. Sliders
             wall_cor_slider.handle_event(event)
+            dt_slider.handle_event(event)
+            fps_slider.handle_event(event)
 
             # 3. Context Menu Logic
             menu_action = context_menu.handle_event(event)
@@ -234,7 +245,10 @@ while running:
         # === STATE 1: RUNNING PHASE (Physics Allowed) ===
         if sim_state == 1:
             # No dragging allowed here!
-            # Just listening for "Pause" (Future Phase) or "Reset" (Global)
+            # Just listening for "Pause" (Future Phase) or "Reset" (Global) and fps / dt sliders
+
+            dt_slider.handle_event(event)
+            fps_slider.handle_event(event)
 
             if pause_btn.handle_event(event):
                 print(f"DEBUG: Pause clicked at {getattr(event, 'pos', None)}, create_form.active={create_form.active}, context_menu.active={context_menu.active}")
@@ -352,10 +366,14 @@ while running:
         wall_cor_slider.render(screen)
         context_menu.render(screen)
         create_form.render(screen)
+        dt_slider.render(screen)
+        fps_slider.render(screen)
 
     elif sim_state == 1:
         pause_btn.render(screen)
         trails_toggle.render(screen)
+        dt_slider.render(screen)
+        fps_slider.render(screen)
 
     elif sim_state == 0.5:
         unpause_btn.render(screen)
@@ -385,7 +403,7 @@ while running:
             start_x += char_width + letter_spacing
 
     pygame.display.flip()
-    clock.tick(144)
+    clock.tick(fps)
 
     for pc in all_point_charges:
         print(f"ID {getattr(pc, 'pc_id', 'N/A')}: Pos {pc.pos}, Vel {pc.vel}, Pos_0 {pc.pos_0}, Vel_0 {pc.vel_0}")
