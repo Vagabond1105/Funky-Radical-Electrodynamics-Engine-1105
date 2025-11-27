@@ -247,6 +247,7 @@ while running:
             # No dragging allowed here!
             # Just listening for "Pause" (Future Phase) or "Reset" (Global) and fps / dt sliders
 
+            wall_cor_slider.handle_event(event)
             dt_slider.handle_event(event)
             fps_slider.handle_event(event)
 
