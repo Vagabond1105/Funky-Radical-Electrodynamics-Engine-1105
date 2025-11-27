@@ -153,6 +153,9 @@ while running:
                         particle.static = form_data['static']
                         particle.color = (200, 0, 0) if particle.charge > 0 else (0, 0, 200)
                         particle.update_relative_scale(all_point_charges)
+                        # update velocity if provided <--- FIX IS HERE
+                        particle.vel_0 = form_data['velocity'] 
+                        particle.vel = form_data['velocity'].copy()
                     else:
                         # Create new particle
                         new_pc = PointCharge(
@@ -162,7 +165,8 @@ while running:
                             form_data['environmental'],
                             form_data['static'],
                             p_id_counter,
-                            form_data.get('e', 1.0)
+                            form_data.get('e', 1.0),
+                            form_data.get('velocity', np.array([0.0, 0.0])) # NEW: Pass vector
                         )
                         all_point_charges.append(new_pc)
                         p_id_counter += 1
@@ -199,6 +203,7 @@ while running:
                                         clicked_pc.static,
                                         p_id_counter,
                                         getattr(clicked_pc, 'e', 1.0)
+                                        ,clicked_pc.vel_0
                                     )
                                     all_point_charges.append(new_pc)
                                     p_id_counter += 1

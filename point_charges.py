@@ -61,11 +61,11 @@ class Arrow:
 
 class PointCharge:
 
-    def __init__(self, pos_0, charge, mass, environmental, static, pc_id,e):
+    def __init__(self, pos_0, charge, mass, environmental, static, pc_id,e, vel0):
         self.position = np.array(pos_0, dtype=float) # Position Vector
-        self.vel = np.array([0.0, 0.0], dtype=float) # Velocity Vector
+        self.vel = np.array(vel0, dtype=float) # Velocity Vector
         self.pos_0 = np.array(pos_0, dtype=float) # Initial Position Vector
-        self.vel_0 = np.array([0.0, 0.0], dtype=float) # Initial Velocity Vector
+        self.vel_0 = np.array(vel0, dtype=float) # Initial Velocity Vector
         self.charge = charge # Charge in Coulombs
         self.mass = mass # Mass in kg
         self.environmental = environmental # Boolean for Environmental Charge

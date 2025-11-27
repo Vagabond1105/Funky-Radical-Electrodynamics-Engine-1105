@@ -241,6 +241,7 @@ class MantissaTextBox:
         self.text = default_text
         self.active = False
         self.font = pygame.font.SysFont(FONT_NAME, FONT_SIZE)
+        self.allow0 = False
         
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN:
@@ -560,7 +561,7 @@ class CreationForm:
             self.input_charge_exponent.text = "0"
             self.input_mass_mantissa.text = "1.0"
             self.input_mass_exponent.text = "0"
-            self.input_vel_mantissa.text = "0.0"
+            self.input_vel_mantissa.text = "1.0"
             self.input_vel_exponent.text = "0"
             self.angle_wheel.angle = 0.0
             
