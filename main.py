@@ -355,10 +355,15 @@ while running:
     pygame.draw.rect(screen, WC, WALL_RECT, WBT) 
     
     # Layer 2: Particles (render trails behind particles)
+    
     for pc in all_point_charges:
-        # Render trails (if any)
+        # Only show arrows in setup mode (sim_state == 0)
+        if sim_state == 0:
+            pc.update_arrow(all_point_charges)
+            pc.arrow_display = True
+        else:
+            pc.arrow_display = False
         pc.render_trails(screen)
-        # Render particle on top
         pc.render(screen)
 
     # Layer 3: GUI (State Dependent)

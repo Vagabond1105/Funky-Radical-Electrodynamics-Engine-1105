@@ -7,12 +7,8 @@ import numpy as np
 from constants_for_all_files import *
 from collections import deque
 
-# --- NEW ARROW CLASS (ENCAPSULATED HERE) ---
+# --- ARROW CLASS (ENCAPSULATED) ---
 class Arrow:
-    """
-    Renders a vector arrow given a start position, length (pixels), and angle (radians).
-    Standard Math Angle: 0 = Right, PI/2 = Down (Pygame coords).
-    """
     def __init__(self, start_pos, length, angle, color=(0, 0, 0), thickness=2):
         self.start_pos = np.array(start_pos, dtype=float)
         self.length = length
@@ -21,39 +17,31 @@ class Arrow:
         self.thickness = thickness
 
     def update(self, start_pos, length, angle):
-        """Update the vector properties dynamically."""
         self.start_pos = np.array(start_pos, dtype=float)
         self.length = length
         self.angle = angle
 
     def render(self, screen):
-        if self.length < 1: return # Don't draw dots for zero vectors
+        if self.length < 1: return 
 
-        # 1. Calculate End Point (Polar -> Cartesian)
-        # Pygame Y is Down, so positive angle goes CLOCKWISE from Right if we just do cos/sin directly.
-        # If you want standard math (Counter-Clockwise), you might need -sin.
-        # Assuming standard Pygame polar:
+        # 1. Calculate End Point
         end_x = self.start_pos[0] + self.length * np.cos(self.angle)
-        end_y = self.start_pos[1] + self.length * np.sin(self.angle) # +sin for Y-down
+        end_y = self.start_pos[1] + self.length * np.sin(self.angle)
         end_pos = (end_x, end_y)
 
         # 2. Draw Shaft
         pygame.draw.line(screen, self.color, self.start_pos, end_pos, self.thickness)
 
         # 3. Draw Head
-        # Calculate two points back from the tip
-        head_len = 10 # Pixel size of the arrow head
-        head_angle = np.radians(150) # Angle of the arrow wings relative to shaft
+        head_len = 10 
+        head_angle = np.radians(150) 
         
-        # Wing 1
         p1_x = end_x + head_len * np.cos(self.angle + head_angle)
         p1_y = end_y + head_len * np.sin(self.angle + head_angle)
 
-        # Wing 2
         p2_x = end_x + head_len * np.cos(self.angle - head_angle)
         p2_y = end_y + head_len * np.sin(self.angle - head_angle)
 
-        # Draw filled triangle
         pygame.draw.polygon(screen, self.color, [end_pos, (p1_x, p1_y), (p2_x, p2_y)])
 
 
@@ -61,90 +49,94 @@ class Arrow:
 
 class PointCharge:
 
-    def __init__(self, pos_0, charge, mass, environmental, static, pc_id,e, vel0):
-        self.position = np.array(pos_0, dtype=float) # Position Vector
-        self.vel = np.array(vel0, dtype=float) # Velocity Vector
-        self.pos_0 = np.array(pos_0, dtype=float) # Initial Position Vector
-        self.vel_0 = np.array(vel0, dtype=float) # Initial Velocity Vector
-        self.charge = charge # Charge in Coulombs
-        self.mass = mass # Mass in kg
-        self.environmental = environmental # Boolean for Environmental Charge
-        self.static = static # Boolean for Static Charge
-        self.pc_id = pc_id # Unique ID for Point Charge
-        self.dragging = False # Boolean for Dragging State
-        # coefficient of restitution
+    def __init__(self, pos_0, charge, mass, environmental, static, pc_id, e, vel0):
+        self.position = np.array(pos_0, dtype=float)
+        self.vel = np.array(vel0, dtype=float)
+        self.pos_0 = np.array(pos_0, dtype=float)
+        self.vel_0 = np.array(vel0, dtype=float)
+        self.charge = charge
+        self.mass = mass
+        self.environmental = environmental
+        self.static = static
+        self.pc_id = pc_id
+        self.dragging = False
         self.e = e
 
-        # Initialize radius values (will be updated by update_relative_scale)
-        self.core_radius = 15  # default core radius
-        self.border_radius = 6  # default border radius
+        # Radius setup
+        self.core_radius = 15
+        self.border_radius = 6
         self.total_radius = self.core_radius + self.border_radius
 
-        self.color = (200, 0, 0) if charge > 0 else (0, 0, 200) # Red for Positive, Blue for Negative
+        self.color = (200, 0, 0) if charge > 0 else (0, 0, 200)
 
+        # Trails
         self.history = deque(maxlen=TRAIL_LENGTH)
         self.frame_counter = 0
-        # Pre-calculate the "Ghost" surface for motion blur
-        # We make a surface big enough to hold the particle
-        # This is an optimization so we don't create surfaces every frame
         self.ghost_surf = pygame.Surface((self.total_radius*2, self.total_radius*2), pygame.SRCALPHA)
-        # Draw the ghost shape ONCE onto this surface
-        # (It's just the colored core, semi-transparent)
         pygame.draw.circle(self.ghost_surf, self.color, (self.total_radius, self.total_radius), int(self.core_radius))
 
-        # --- ARROW INTEGRATION ---
-        # Initial dummy arrow, updated in loop
-        self.v0_arrow = Arrow(self.position, 0, 0, color=(50, 255, 50)) 
+        # --- ARROW SETUP (FIXED) ---
+        # Arrow color: black for positive, white for negative
+        arrow_color = (0, 0, 0) if charge > 0 else (255, 255, 255)
+        self.arrow_obj = Arrow(self.position, 0, 0, color=arrow_color, thickness=5)
         self.arrow_display = True
 
     @property
     def pos(self):
         """Property to always return current position (for compatibility with electric_field.py)."""
         return self.position
-
+    
     def update_relative_scale(self, all_charges):
-        
-        # Determines core_radius based on charge magnitude vs others.
-        # Determines border_radius based on mass vs others.
-        
-        if not all_charges:
-            return
+        if not all_charges: return
 
-        # 1. Calculate Core Radius (Charge)
+        # --- 1. Radius Calculation (Existing) ---
         max_q = max(abs(pc.charge) for pc in all_charges)
         min_q = min(abs(pc.charge) for pc in all_charges)
         q_range = max_q - min_q
         
         current_q = abs(self.charge)
-        
-        if q_range == 0:
-            norm_q = 0.5
-        else:
-            # (current - min) / range -> 0 to 1
-            norm_q = (current_q - min_q) / q_range
-            
-        self.core_radius = 5 + (norm_q * 15) # Scale 5px to 20px
+        norm_q = (current_q - min_q) / q_range if q_range != 0 else 0.5
+        self.core_radius = 5 + (norm_q * 15)
 
-        # 2. Calculate Border Radius (Mass)
+        # --- 2. Border Calculation (Existing) ---
         max_m = max(pc.mass for pc in all_charges)
         min_m = min(pc.mass for pc in all_charges)
         m_range = max_m - min_m
         
         current_m = self.mass
-        
-        if m_range == 0:
-            norm_m = 0.5
-        else:
-            norm_m = (current_m - min_m) / m_range
-            
-        self.border_radius = 1 + (norm_m * 4) # Scale 1px to 5px
-        
-        # 3. Sum for total hitbox
+        norm_m = (current_m - min_m) / m_range if m_range != 0 else 0.5
+        self.border_radius = 1 + (norm_m * 4)
         self.total_radius = self.core_radius + self.border_radius
         
-        # update ghost surface with new size
+        # Update ghost surf
         self.ghost_surf = pygame.Surface((int(self.total_radius*2), int(self.total_radius*2)), pygame.SRCALPHA)
         pygame.draw.circle(self.ghost_surf, self.color, (int(self.total_radius), int(self.total_radius)), int(self.core_radius))
+
+        # --- 3. ARROW UPDATE (New) ---
+        # Only update arrows for dynamic particles
+        if not self.static:
+            # Get magnitude of initial velocity
+            my_vel_mag = np.linalg.norm(self.vel_0)
+            
+            # Find max/min velocity in the system for relative scaling
+            velocities = [np.linalg.norm(p.vel_0) for p in all_charges if not p.static]
+            if not velocities:
+                max_v, min_v = 0, 0
+            else:
+                max_v, min_v = max(velocities), min(velocities)
+            
+            # Scale arrow length between 30px and 100px based on relative speed
+            v_range = max_v - min_v
+            if v_range == 0:
+                scale = 0.5 if max_v > 0 else 0
+            else:
+                scale = (my_vel_mag - min_v) / v_range
+            
+            length = 0 if my_vel_mag == 0 else 30 + (scale * 70)
+            angle = np.arctan2(self.vel_0[1], self.vel_0[0])
+            
+            # Update the internal Arrow object
+            self.arrow_obj.update(self.position, length, angle)
 
     def reset(self):
         # Always revert to initial state (position and velocity)
@@ -168,6 +160,11 @@ class PointCharge:
         """Calculates arrow length and angle based on relative velocity."""
         if not all_charges: return
 
+        if self.charge < 0:
+            self.arrow_obj.color = (255, 255, 255)  # White for negative charges
+        else:
+            self.arrow_obj.color = (0, 0, 0)  # Black for positive charges
+
         angle = PointCharge.calc_phi(self.vel_0)
 
         # Scaling logic for length
@@ -189,31 +186,28 @@ class PointCharge:
             # Base length 20, max add 60
             length = 20 + (scale * 60) if this_v0_mag > 0 else 0
 
-        self.v0_arrow.update(self.position, length, angle)
+        self.arrow_obj.update(self.position, length, angle)
     
     def render(self, screen):
-        # Draw Border (Mass representation) - Colored based on charge
-        if self.charge > 0:
-            border_colour_fill = (220, 90, 90)  # Orange for Positive Charge Border
-        elif self.charge < 0:
-            border_colour_fill = (130, 20, 130)  # Purple for Negative Charge Border
-        else:
-            border_colour_fill = (100, 100, 100)  # Grey for neutral
-            
-        pygame.draw.circle(screen, border_colour_fill, self.position.astype(int), int(self.total_radius))
+        # --- RENDER ARROW FIRST (underneath particle) ---
+        # Only if enabled and not static
+        if self.arrow_display and not self.static:
+            self.arrow_obj.render(screen)
         
-        # Draw Core (Charge representation) - Colored
+        # Draw Border
+        if self.charge > 0: border_col = (220, 90, 90)
+        elif self.charge < 0: border_col = (130, 20, 130)
+        else: border_col = (100, 100, 100)
+            
+        pygame.draw.circle(screen, border_col, self.position.astype(int), int(self.total_radius))
+        
+        # Draw Core
         pygame.draw.circle(screen, self.color, self.position.astype(int), int(self.core_radius))
         
         # Selection Highlight
         if self.dragging:
             pygame.draw.circle(screen, (255, 255, 255), self.position.astype(int), int(self.total_radius + 2), 2)
-            # sets new position while dragging
             self.position = np.array(pygame.mouse.get_pos(), dtype=float)
-
-        # Render Arrow (Only if display is enabled and not static)
-        if self.arrow_display and not self.static:
-            self.v0_arrow.render(screen)
 
     def record_trail(self, enabled=False):
         """Record current position into history when enabled.
