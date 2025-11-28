@@ -151,7 +151,13 @@ while running:
                         particle.e = form_data.get('e', getattr(particle, 'e', 1.0))
                         particle.environmental = form_data['environmental']
                         particle.static = form_data['static']
-                        particle.color = (200, 0, 0) if particle.charge > 0 else (0, 0, 200)
+                        # Update color based on charge (handle neutral)
+                        if particle.charge > 0:
+                            particle.color = (200, 0, 0)
+                        elif particle.charge < 0:
+                            particle.color = (0, 0, 200)
+                        else:
+                            particle.color = (80, 80, 80)
                         particle.update_relative_scale(all_point_charges)
                         # update velocity if provided <--- FIX IS HERE
                         particle.vel_0 = form_data['velocity'] 

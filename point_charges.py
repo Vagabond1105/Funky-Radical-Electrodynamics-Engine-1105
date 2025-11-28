@@ -67,7 +67,12 @@ class PointCharge:
         self.border_radius = 6
         self.total_radius = self.core_radius + self.border_radius
 
-        self.color = (200, 0, 0) if charge > 0 else (0, 0, 200)
+        if charge > 0:
+            self.color = (200, 0, 0)
+        elif charge < 0:
+            self.color = (0, 0, 200)
+        else:
+            self.color = (80, 80, 80)  # Darker grey for neutral
 
         # Trails
         self.history = deque(maxlen=TRAIL_LENGTH)
@@ -78,7 +83,7 @@ class PointCharge:
         # --- ARROW SETUP (FIXED) ---
         # Arrow color: black for positive, white for negative
         arrow_color = (0, 0, 0) if charge > 0 else (255, 255, 255)
-        self.arrow_obj = Arrow(self.position, 0, 0, color=arrow_color, thickness=5)
+        self.arrow_obj = Arrow(self.position, 0, 0, color=arrow_color, thickness=3)
         self.arrow_display = True
 
     @property
@@ -90,13 +95,17 @@ class PointCharge:
         if not all_charges: return
 
         # --- 1. Radius Calculation (Existing) ---
-        max_q = max(abs(pc.charge) for pc in all_charges)
-        min_q = min(abs(pc.charge) for pc in all_charges)
-        q_range = max_q - min_q
-        
-        current_q = abs(self.charge)
-        norm_q = (current_q - min_q) / q_range if q_range != 0 else 0.5
-        self.core_radius = 5 + (norm_q * 15)
+        # Neutral charges (charge == 0) get middle core radius (12.5px)
+        if self.charge == 0:
+            self.core_radius = 12.5
+        else:
+            max_q = max(abs(pc.charge) for pc in all_charges)
+            min_q = min(abs(pc.charge) for pc in all_charges)
+            q_range = max_q - min_q
+            
+            current_q = abs(self.charge)
+            norm_q = (current_q - min_q) / q_range if q_range != 0 else 0.5
+            self.core_radius = 5 + (norm_q * 15)
 
         # --- 2. Border Calculation (Existing) ---
         max_m = max(pc.mass for pc in all_charges)
@@ -190,14 +199,14 @@ class PointCharge:
     
     def render(self, screen):
         # --- RENDER ARROW FIRST (underneath particle) ---
-        # Only if enabled and not static
-        if self.arrow_display and not self.static:
+        # Only if enabled, not static, and velocity is not zero
+        if self.arrow_display and not self.static and np.linalg.norm(self.vel_0) > 0:
             self.arrow_obj.render(screen)
         
         # Draw Border
         if self.charge > 0: border_col = (220, 90, 90)
         elif self.charge < 0: border_col = (130, 20, 130)
-        else: border_col = (100, 100, 100)
+        else: border_col = (255, 182, 193)  # Light pink for neutral
             
         pygame.draw.circle(screen, border_col, self.position.astype(int), int(self.total_radius))
         

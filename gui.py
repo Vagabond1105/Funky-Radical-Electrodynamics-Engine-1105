@@ -272,7 +272,10 @@ class MantissaTextBox:
         """Returns float if valid, None otherwise."""
         try:
             val = float(self.text)
-            return val if val > 0 else None
+            if self.allow0:
+                return val if val >= 0 else None
+            else:
+                return val if val > 0 else None
         except ValueError:
             return None
 
@@ -472,6 +475,7 @@ class CreationForm:
         self.btn_remember = BinaryToggle(0, 0, 120, 25, "Remember Input", False)
         self.btn_charge_sign = BinaryToggle(0, 0, 50, 30, "", True, text_true="+", text_false="-", col_true=COL_POS, col_false=COL_NEG)
         self.input_charge_mantissa = MantissaTextBox(0, 0, 80, 30, "1.0")
+        self.input_charge_mantissa.allow0 = True
         self.input_charge_exponent = ExponentTextBox(0, 0, 60, 30, "0")
         self.input_mass_mantissa = MantissaTextBox(0, 0, 80, 30, "1.0")
         self.input_mass_exponent = ExponentTextBox(0, 0, 60, 30, "0")
@@ -482,7 +486,8 @@ class CreationForm:
         
         # --- VELOCITY COMPONENTS ---
         self.angle_wheel = AngleWheel(0, 0, 35, initial_angle=0.0) # Radius 35
-        self.input_vel_mantissa = MantissaTextBox(0, 0, 80, 30, "0.0")
+        self.input_vel_mantissa = MantissaTextBox(0, 0, 80, 30, "0")
+        self.input_vel_mantissa.allow0 = True
         self.input_vel_exponent = ExponentTextBox(0, 0, 60, 30, "0")
         
         # Buttons
@@ -499,7 +504,7 @@ class CreationForm:
         
         if self.edit_mode and particle:
             charge_val = abs(particle.charge)
-            if charge_val == 0: c_mantissa, c_exponent = 1.0, 0
+            if charge_val == 0: c_mantissa, c_exponent = 0.0, 0
             else:
                 import math
                 c_exponent = int(math.floor(math.log10(charge_val)))
@@ -561,7 +566,7 @@ class CreationForm:
             self.input_charge_exponent.text = "0"
             self.input_mass_mantissa.text = "1.0"
             self.input_mass_exponent.text = "0"
-            self.input_vel_mantissa.text = "1.0"
+            self.input_vel_mantissa.text = "0.0"
             self.input_vel_exponent.text = "0"
             self.angle_wheel.angle = 0.0
             
@@ -633,7 +638,7 @@ class CreationForm:
                     m_man is not None and m_exp is not None and
                     v_man is not None and v_exp is not None):
                     
-                    if 1.0 <= c_man <= 9.9 and 1.0 <= m_man <= 9.9 and v_man >= 0:
+                    if c_man >= 0 and c_man <= 9.9 and 1.0 <= m_man <= 9.9 and v_man >= 0:
                         
                         if self.btn_remember.state and not self.edit_mode:
                             self.creation_memory = {
