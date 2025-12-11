@@ -29,7 +29,7 @@ trails_toggle = TrailsToggle()
 wall_cor_slider = WallCORSlider(30, 20, 150, 30, initial_value=BW_coeff)
 dt_slider = GenericSlider(1250, 50, 150, 30,min_val=0.00005, max_val=0.02, initial_val=1/1000, 
                           label="Time Step (dt):", fmt="{:.5f}")
-fps_slider = GenericSlider(1250, 100, 150, 30, min_val=60, max_val=400, initial_val=100, 
+fps_slider = GenericSlider(1250, 100, 150, 30, min_val=60, max_val=9000, initial_val=100, 
                            label="Max FPS:", fmt="{:.0f}")
 
 # engine
@@ -47,6 +47,12 @@ wall_cor = wall_cor_slider.value
 LAST_CLICK_MS = 400  # max ms between clicks to consider a double-click
 last_click_time = 0
 last_click_pc_id = None
+
+# Energy tracking
+total_kinetic_energy = 0.0
+total_potential_energy = 0.0
+initial_total_energy = None  # Set when simulation starts
+energy_font = pygame.font.SysFont('Arial', 16)
 
 # Pause text bouncing (DVD logo style)
 
@@ -117,7 +123,11 @@ while running:
                     selected_charge = None
                     context_menu.active = False
                     create_form.active = False
+                    # Capture initial energy
+                    ke_init, pe_init = physics_engine.compute_energy(all_point_charges)
+                    initial_total_energy = ke_init + pe_init
                     print("SIMULATION STARTED")
+                    print(f"Initial Total Energy: {initial_total_energy:.2e} J")
 
             # 2. Sliders
             wall_cor_slider.handle_event(event)
@@ -322,17 +332,37 @@ while running:
         masses = np.array([p.mass for p in all_point_charges])
         static_status = np.array([p.static for p in all_point_charges], dtype=bool)
 
-        # 1. The RK4 Step (Motion)
+        # 1. The Velocity-Verlet integration step (Motion with forces)
         physics_engine.get_accelerations(positions, velocities, charges, masses, static_status)
         physics_engine.update_positions_velocities(dt, all_point_charges)
-        # 2. Collision Detection & Response with Walls
+        
+        # 2. Handle collisions AFTER integration
         physics_engine.handle_wall_collisions(all_point_charges, wall_cor)
         physics_engine.handle_particle_collisions(all_point_charges)
+        
+        # 3. Energy correction (only if all collisions are perfectly elastic)
+        # Check if all particles have e=1.0 and wall_cor=1.0
+        all_elastic = all(getattr(pc, 'e', 1.0) == 1.0 for pc in all_point_charges) and wall_cor == 1.0
+        
+        if all_elastic and initial_total_energy is not None:
+            # Calculate current energy
+            current_ke, current_pe = physics_engine.compute_energy(all_point_charges)
+            current_total = current_ke + current_pe
+            
+            # Only correct if there's actually kinetic energy to scale
+            if current_ke > 1e-10 and abs(current_total - initial_total_energy) > 1e-6:
+                # Scale velocities to restore energy
+                scale_factor = np.sqrt(max(0, (initial_total_energy - current_pe) / current_ke))
+                for pc in all_point_charges:
+                    if not pc.static:
+                        pc.vel *= scale_factor
 
         # Record trails for each particle (only if toggle enabled)
         for pc in all_point_charges:
             pc.record_trail(trails_toggle.state)
-            print(f"ID {getattr(pc, 'pc_id', 'N/A')}: Pos {pc.pos}, Vel {pc.vel}")
+        
+        # Calculate energies using physics engine (ensures consistency with force calculations)
+        total_kinetic_energy, total_potential_energy = physics_engine.compute_energy(all_point_charges)
 
     # Update pause text position (bouncing DVD logo style)
     elif sim_state == 0.5:

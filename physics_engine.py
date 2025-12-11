@@ -1,80 +1,95 @@
-# below is physics_engine.py
-
-# necessary imports
-
-import pygame
+# physics_engine.py
 import numpy as np
-from constants_for_all_files import *
 
-# Physics Engine for Point Charge Dynamics
-
-# constants for physics calculations
-
-dt = 1/9000
-
-# Physics Engine Class
+# Keep your existing constants import in your file
+from constants_for_all_files import *  # K_COULOMB, WALL_INNER_RECT, etc.
 
 class PhysicsEngine:
+    """
+    Symplectic/Velocity-Verlet based physics engine for point charges with:
+    - softening to avoid singularities
+    - pairwise particle collision resolution (positional correction + impulse)
+    - wall collisions
+    - energy diagnostics (kinetic + Coulomb potential)
+    """
 
-    def __init__(self):
-        pass
+    def __init__(self, softening_eps=400.0, min_r2=400.0, debug=False):
+        """
+        softening_eps: length scale used to soften Coulomb potential (pixels)
+        min_r2: fallback minimum r^2 in get_accelerations (keeps your previous safety)
+        debug: if True, print energy diagnostics occasionally
+        """
+        self.softening_eps = float(softening_eps)
+        self.softening_eps2 = self.softening_eps * self.softening_eps
+        self.min_r2 = float(min_r2)
+        self.debug = debug
 
-    # acceleration due to electric forces
-
+    # ----- Force / Acceleration -----
     def get_accelerations(self, positions, velocities, charges, masses, static_status):
-
-        # Calculates net accerlation for each point charge due to electric forces from all other charges
-        # Returns an array of shape (N, 2) where N is number of point charges and each row is the acceleration vector [ax, ay]
-
+        """
+        positions: (N,2) array
+        velocities: (N,2) array (not used directly for Coulomb force, but kept for API)
+        charges: (N,) array
+        masses: (N,) array
+        static_status: (N,) boolean array, True if static (immovable)
+        returns: accelerations array shape (N,2)
+        """
         n = len(positions)
         accelerations = np.zeros((n, 2), dtype=float)
-
         if n < 2:
             return accelerations
-        
-        # n body coloumb loop: O(N^2)
+
+        # Pairwise O(N^2) Coulomb. Use softening by adding eps^2 to r^2.
         for i in range(n):
             if static_status[i]:
-                continue # skip static charges for acceleration calculation
-            
-            net_force = np.array([0.0, 0.0], dtype=float)
+                continue
+            net_force = np.zeros(2, dtype=float)
+            pos_i = positions[i]
+            qi = charges[i]
 
             for j in range(n):
-            
                 if i == j:
-                    continue # skip self-interaction
+                    continue
 
-                diff = positions[j] - positions[i]
+                pos_j = positions[j]
+                qj = charges[j]
+                diff = pos_i - pos_j      # r_i - r_j (force on i)
                 r2 = np.dot(diff, diff)
 
-                if r2 < 400: # minimum distance squared to avoid extreme forces
-                    r2 = 400
+                # Respect minimum distance for stability (legacy fallback)
+                if r2 < self.min_r2:
+                    r2 = self.min_r2
 
-                # Use vector from j to i so like charges repel (Coulomb: F_i = k*q_i*q_j*(r_i - r_j)/r^3)
-                # diff currently is r_j - r_i, so invert it to get r_i - r_j
-                diff_ij = -diff
-                r = np.sqrt(r2)
-                force_magnitude = (K_COULOMB * charges[i] * charges[j]) / r2
-                direction = diff_ij / r
-                force = force_magnitude * direction
-                net_force += force
+                # Softening addition for Coulomb denominator
+                r2_soft = r2 + self.softening_eps2
+                r = np.sqrt(r2_soft)
 
-            # acceleration = net_force / mass
-            accelerations[i] += net_force / masses[i]
+                # Coulomb force magnitude: k * qi * qj / r^2_soft
+                # direction: diff / r
+                if r > 0:
+                    force_mag = (K_COULOMB * qi * qj) / r2_soft
+                    direction = diff / r
+                    force = force_mag * direction
+                    net_force += force
+                # else r extremely small, skip (shouldn't happen due to softening)
+
+            accelerations[i] = net_force / masses[i]
 
         return accelerations
-    
-    # updates positions and velocities of point charges
 
+    # ----- Symplectic Integrator: Velocity-Verlet -----
     def update_positions_velocities(self, dt, all_charges):
-
-        # does RK4 integration to update positions and velocities of all point charges
-
+        """
+        Velocity-Verlet update for all particles.
+        Steps:
+            1) compute a(t)
+            2) x(t+dt) = x(t) + v(t)*dt + 0.5*a(t)*dt^2
+            3) compute a(t+dt) from new positions
+            4) v(t+dt) = v(t) + 0.5*(a(t) + a(t+dt))*dt
+        """
         n = len(all_charges)
         if n == 0:
             return
-        
-        # use a bunch of arrays lol brrr ARRRGH OOPHH
 
         positions = np.array([p.position for p in all_charges])
         velocities = np.array([p.vel for p in all_charges])
@@ -82,47 +97,128 @@ class PhysicsEngine:
         masses = np.array([p.mass for p in all_charges])
         static_status = np.array([p.static for p in all_charges], dtype=bool)
 
-        # RK4 Integration Steps
+        # 1. initial accelerations a(t)
+        a_t = self.get_accelerations(positions, velocities, charges, masses, static_status)
 
-        # state at t
-        a1 = self.get_accelerations(positions, velocities, charges, masses, static_status)
-        v1 = velocities
+        # 2. update positions
+        positions_new = positions + velocities * dt + 0.5 * a_t * (dt * dt)
 
-        # state at t + dt/2
-        p2 = positions + 0.5 * dt * v1
-        v2 = velocities + 0.5 * dt * a1
-        a2 = self.get_accelerations(p2, v2, charges, masses, static_status)
+        # Optional: keep static particles exactly fixed
+        for i, s in enumerate(static_status):
+            if s:
+                positions_new[i] = positions[i]
 
-        # state at t + dt/2 using _2 slopes
+        # 3. compute accelerations at new positions a(t+dt)
+        # Note: velocities passed here are still v(t) — that's fine for force calc
+        a_tdt = self.get_accelerations(positions_new, velocities, charges, masses, static_status)
 
-        p3 = positions + 0.5 * dt * v2
-        v3 = velocities + 0.5 * dt * a2
-        a3 = self.get_accelerations(p3, v3, charges, masses, static_status)
+        # 4. update velocities
+        velocities_new = velocities + 0.5 * (a_t + a_tdt) * dt
 
-        # state at t + dt using _3 slopes
-
-        p4 = positions + dt * v3
-        v4 = velocities + dt * a3
-        a4 = self.get_accelerations(p4, v4, charges, masses, static_status)
-
-        # combine it all
-
-        new_positions = positions + (dt / 6.0) * (v1 + 2 * v2 + 2 * v3 + v4)
-        new_velocities = velocities + (dt / 6.0) * (a1 + 2 * a2 + 2 * a3 + a4)
-
-        # now all the new positions and velocities are updated for the point charges
-
+        # 5. write back into objects (skip static)
         for i in range(n):
             if not static_status[i]:
-                all_charges[i].position = new_positions[i]
-                all_charges[i].vel = new_velocities[i]
+                all_charges[i].position = positions_new[i]
+                all_charges[i].vel = velocities_new[i]
+
+    # ----- Pairwise particle collision resolution (internal) -----
+    def _resolve_pair_collision(self, p1, p2):
+        """
+        Robust collision handling between two point-charge objects.
+        - Impulse resolution using effective restitution = min(e1, e2)
+        - Positional correction (push them apart based on overlap)
+        - Handles static flags and infinite mass
+        Assumes p1 and p2 expose:
+            position (np.array([x,y])), vel (np.array([vx,vy])),
+            total_radius (hitbox), mass, static (bool), e (per-object)
+        """
+        # Quick exit if both static
+        if p1.static and p2.static:
+            return
+
+        diff = p1.position - p2.position
+        dist_sq = np.dot(diff, diff)
+        min_dist = p1.total_radius + p2.total_radius
+
+        # If not overlapping, nothing to do
+        if dist_sq >= (min_dist * min_dist):
+            return
+
+        # compute distance and normal
+        if dist_sq == 0:
+            # perfect overlap - choose arbitrary normal
+            n = np.array([1.0, 0.0], dtype=float)
+            dist = 0.0
+            overlap = min_dist
+        else:
+            dist = np.sqrt(dist_sq)
+            n = diff / dist
+            overlap = min_dist - dist
+
+        # -------- impulse (velocity) resolution FIRST --------
+        inv_m1 = 0.0 if p1.static else (1.0 / p1.mass)
+        inv_m2 = 0.0 if p2.static else (1.0 / p2.mass)
+        inv_mass_sum = inv_m1 + inv_m2
+
+        if inv_mass_sum == 0:
+            return  # both infinite mass
+
+        # relative velocity along normal
+        v_rel = p1.vel - p2.vel
+        vel_along_normal = np.dot(v_rel, n)
+
+        # If separating (positive), nothing to do
+        if vel_along_normal > 0:
+            return
+
+        # effective restitution: choose minimum (less bouncy dominates)
+        e_eff = min(getattr(p1, "e", 1.0), getattr(p2, "e", 1.0))
+
+        # compute impulse scalar
+        j = -(1.0 + e_eff) * vel_along_normal
+        j /= inv_mass_sum
+
+        impulse = j * n
+
+        if not p1.static:
+            p1.vel += impulse * inv_m1
+        if not p2.static:
+            p2.vel -= impulse * inv_m2
+
+        # -------- positional correction AFTER (with reduced correction to minimize energy injection) --------
+        # Use only 80% correction to avoid overshooting and energy gain
+        correction_factor = 0.8
+        
+        if not p1.static and not p2.static:
+            p1.position += n * (overlap * correction_factor * (inv_m1 / inv_mass_sum))
+            p2.position -= n * (overlap * correction_factor * (inv_m2 / inv_mass_sum))
+        elif not p1.static and p2.static:
+            p1.position += n * (overlap * correction_factor)
+        elif p1.static and not p2.static:
+            p2.position -= n * (overlap * correction_factor)
+
+    # ----- Public collision handlers -----
+    def handle_particle_collisions(self, all_charges):
+        """O(N^2) pairwise collision checks and resolves using internal resolver."""
+        n = len(all_charges)
+        for i in range(n):
+            for j in range(i + 1, n):
+                p1 = all_charges[i]
+                p2 = all_charges[j]
+                # quick skip if both static
+                if p1.static and p2.static:
+                    continue
+                self._resolve_pair_collision(p1, p2)
 
     def handle_wall_collisions(self, all_charges, wall_cor):
-        """Checks and resolves collisions with the screen boundaries."""
+        """
+        Boundary collisions — inverts velocity component and multiplies by wall_cor (coefficient).
+        Keeps particles inside WALL_INNER_RECT (assumes pygame Rect-like object).
+        """
         for pc in all_charges:
-            if pc.static: continue
+            if pc.static:
+                continue
 
-            # X Axis (Left/Right)
             left_bound = WALL_INNER_RECT.left + pc.total_radius
             right_bound = WALL_INNER_RECT.right - pc.total_radius
             if pc.position[0] < left_bound:
@@ -131,8 +227,7 @@ class PhysicsEngine:
             elif pc.position[0] > right_bound:
                 pc.position[0] = right_bound
                 pc.vel[0] *= -wall_cor
-                
-            # Y Axis (Top/Bottom)
+
             top_bound = WALL_INNER_RECT.top + pc.total_radius
             bottom_bound = WALL_INNER_RECT.bottom - pc.total_radius
             if pc.position[1] < top_bound:
@@ -142,13 +237,65 @@ class PhysicsEngine:
                 pc.position[1] = bottom_bound
                 pc.vel[1] *= -wall_cor
 
-    def handle_particle_collisions(self, all_charges):
-
-        """Checks and resolves elastic collisions between all particle pairs."""
+    # ----- Energy diagnostics -----
+    def compute_energy(self, all_charges):
+        """
+        Returns (kinetic_energy, potential_energy) as floats.
+        Potential energy is Coulomb pairwise sum: U = sum_{i<j} k qi qj / r_soft
+        (Note: r_soft uses softening to avoid singularity.)
+        """
         n = len(all_charges)
-        # O(N^2) loop, but clean
+        positions = np.array([p.position for p in all_charges])
+        velocities = np.array([p.vel for p in all_charges])
+        charges = np.array([p.charge for p in all_charges])
+        masses = np.array([p.mass for p in all_charges])
+        static_status = np.array([p.static for p in all_charges], dtype=bool)
+
+        # kinetic energy
+        ke = 0.0
+        for i in range(n):
+            v2 = np.dot(velocities[i], velocities[i])
+            ke += 0.5 * masses[i] * v2
+
+        # potential energy (pairwise Coulomb)
+        pe = 0.0
         for i in range(n):
             for j in range(i + 1, n):
-                p1 = all_charges[i]
-                p2 = all_charges[j]
-                p1.resolve_collision(p2)
+                diff = positions[i] - positions[j]
+                r2 = np.dot(diff, diff)
+                # use min fallback and softening consistent with forces
+                if r2 < self.min_r2:
+                    r2 = self.min_r2
+                r = np.sqrt(r2 + self.softening_eps2)
+                pe += K_COULOMB * charges[i] * charges[j] / r
+
+        return ke, pe
+
+    # Helper to step full physics tick: integrate, particle collisions, wall collisions, optional energy print
+    def step(self, dt, all_charges, wall_cor=1.0, do_collisions=True, do_walls=True, diagnostics=False):
+        """
+        Convenience function performing:
+            - integrate (Velocity-Verlet)
+            - handle particle collisions (if do_collisions)
+            - handle wall collisions (if do_walls)
+            - return energy diagnostics if diagnostics True
+        """
+        # 1) Integrate
+        self.update_positions_velocities(dt, all_charges)
+
+        # 2) Resolve particle collisions (positional + impulses)
+        if do_collisions:
+            self.handle_particle_collisions(all_charges)
+
+        # 3) Wall collisions
+        if do_walls:
+            self.handle_wall_collisions(all_charges, wall_cor)
+
+        # 4) Diagnostics
+        if diagnostics or self.debug:
+            ke, pe = self.compute_energy(all_charges)
+            if self.debug:
+                print(f"[PhysicsEngine] KE: {ke:.6f}  PE: {pe:.6f}  Total: {ke+pe:.6f}")
+            return ke, pe
+
+        return None

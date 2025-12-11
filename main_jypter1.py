@@ -9,10 +9,10 @@ import sys
 
 # import all other necessary modules
 
-from constants_for_all_files import *
-from point_charges import *
-from electric_field import *
-from gui import *
+from constants_for_all_files_jypter1 import *
+from point_charges_jypter1 import *
+from electric_field_jypter1 import *
+from gui_jypter1 import *
 
 # set up the window
 
@@ -82,7 +82,6 @@ while running:
                     particle = form_data['particle']
                     particle.charge = form_data['charge']
                     particle.mass = form_data['mass']
-                    particle.e = form_data.get('e', getattr(particle, 'e', 1.0))
                     particle.environmental = form_data['environmental']
                     particle.static = form_data['static']
                     # Update color based on new charge sign
@@ -92,13 +91,12 @@ while running:
                 else:
                     # Create mode: spawn new particle
                     new_pc = PointCharge(
-                        form_data['position'],
-                        form_data['charge'],
-                        form_data['mass'],
-                        form_data['environmental'],
-                        form_data['static'],
-                        p_id_counter,
-                        form_data.get('e', 1.0)
+                        pos_0=form_data['position'],
+                        charge=form_data['charge'],
+                        mass=form_data['mass'],
+                        environmental=form_data['environmental'],
+                        static=form_data['static'],
+                        pc_id=p_id_counter
                     )
                     all_point_charges.append(new_pc)
                     p_id_counter += 1
