@@ -8,6 +8,9 @@ from point_charges import *
 from electric_field import *
 from physics_engine import *
 from gui import *
+from phase4_visualiser import Phase4Visualiser
+phase4 = Phase4Visualiser()
+phase4.start()
 
 # --- 1. INITIALIZATION & SETUP ---
 pygame.init()
@@ -449,6 +452,8 @@ while running:
             screen.blit(char_surf, (start_x, pause_text_pos[1] - char_surf.get_height()//2))
             start_x += char_width + letter_spacing
 
+    phase4.update(all_point_charges)
+
     pygame.display.flip()
     clock.tick(fps)
 
@@ -456,4 +461,5 @@ while running:
         print(f"ID {getattr(pc, 'pc_id', 'N/A')}: Pos {pc.pos}, Vel {pc.vel}, Pos_0 {pc.pos_0}, Vel_0 {pc.vel_0}")
 
 pygame.quit()
+phase4.stop()
 sys.exit()
