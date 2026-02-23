@@ -141,8 +141,15 @@ FREE1105/
 - Barnes-Hut tree for O(N log N) force computation
 - GPU acceleration via CuPy for large N
 
+The reason the phases are outta order is because initially the geometric visualisation was gonna be phase 4, but I ran out of time with other commitments so I just decided to do it instead of phase 3 and 5 quickly because it would be pretty easy compared to 3 and 5, considering it is basically just matplotlib.
+
 ---
 
-*Built independently as a self-directed computational physics project, 2024–25.*
+*Built independently as a self-directed computational physics project, 2025–26.*
 
 ![WhatsApp Image 2026-02-23 at 01 00 25](https://github.com/user-attachments/assets/f406baf8-15f7-4318-8896-94861fcc9ada)
+<img width="1906" height="996" alt="image" src="https://github.com/user-attachments/assets/8a589cc4-d17c-4821-9932-99e83a15ee4d" />
+<img width="1919" height="959" alt="image" src="https://github.com/user-attachments/assets/423fbba2-0143-4b61-a73f-7ea3235bb881" />
+<img width="1769" height="1026" alt="image" src="https://github.com/user-attachments/assets/78eb871b-89b7-4b4e-9c50-55479ca131f8" />
+
+
