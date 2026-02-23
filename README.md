@@ -2,6 +2,11 @@
 
 A 2D electrodynamics simulator built from scratch in Python, featuring real-time charge dynamics, a custom symplectic physics engine, and a 3D electric potential visualiser. Developed independently alongside a second-year Theoretical Physics degree.
 
+### JUST DOWNLOAD THE REPO AND RUN MAIN.PY - you can look through the Jupyter file if you want to see the iterative steps and thoughts along the way, but if you wish to run phase 4, just go through main.py. You have to download the following modules tho
+- pygame
+- matplotlib
+- numpy
+
 ---
 
 ## Overview
